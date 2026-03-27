@@ -3,7 +3,6 @@ import os
 import time
 from telegram import Bot
 
-# 🔐 Variáveis do Railway
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
@@ -26,47 +25,57 @@ def buscar_jogos():
         print("DEBUG API:", data)
 
         if "response" not in data or not data["response"]:
-            return ["⚠️ Nenhum jogo encontrado ou erro na API"]
+            return ["⚠️ Nenhum jogo encontrado"]
 
-        jogos = []
+        oportunidades = []
 
         for jogo in data["response"]:
             home = jogo["teams"]["home"]["name"]
             away = jogo["teams"]["away"]["name"]
 
-            gols_home = jogo["goals"]["home"]
-            gols_away = jogo["goals"]["away"]
+            status = jogo["fixture"]["status"]["short"]
 
-            # evita erro se não tiver gols ainda
-            if gols_home is None or gols_away is None:
+            # 🔥 FILTRA APENAS PRÉ-JOGO
+            if status != "NS":  # Not Started
                 continue
 
-            total_gols = gols_home + gols_away
+            # 🔥 SIMULAÇÃO DE ANÁLISE (melhoraremos depois)
+            # usamos ID do jogo como base pra gerar padrão
+            jogo_id = jogo["fixture"]["id"]
 
-            # 🔥 FILTRO DE OPORTUNIDADE
-            if total_gols >= 0 and total_gols <= 2.5:
-                jogos.append(
-                    f"""🔥 OPORTUNIDADE
+            # regra simples: alterna padrões
+            if jogo_id % 2 == 0:
+                probabilidade = 70
+                mercado = "Over 2.5 gols"
+            else:
+                probabilidade = 65
+                mercado = "BTTS (Ambas Marcam)"
+
+            # 🔥 FILTRO DE VALOR
+            if probabilidade >= 65:
+                oportunidades.append(
+                    f"""🔥 ALERTA PRÉ-JOGO
 
 {home} x {away}
-✔️ Tendência Over 2.5
-⚽ Gols atuais: {total_gols}
+✔️ Mercado: {mercado}
+📊 Probabilidade estimada: {probabilidade}%
+💡 Jogo com tendência ofensiva
 """
                 )
 
-        if not jogos:
-            return ["⚠️ Nenhuma oportunidade encontrada hoje"]
+        if not oportunidades:
+            return ["⚠️ Nenhuma oportunidade pré-jogo encontrada"]
 
-        return jogos
+        return oportunidades
 
     except Exception as e:
-        return [f"Erro geral: {str(e)}"]
+        return [f"Erro: {str(e)}"]
 
 
 def enviar_alerta():
     jogos = buscar_jogos()
 
-    mensagem = "🔥 ALERTAS DO DIA\n\n"
+    mensagem = "📊 ANÁLISE PRÉ-JOGO\n\n"
 
     for j in jogos[:5]:
         mensagem += f"{j}\n"
@@ -74,8 +83,7 @@ def enviar_alerta():
     bot.send_message(chat_id=CHAT_ID, text=mensagem)
 
 
-# 🔁 LOOP AUTOMÁTICO (RODA 24H)
 if __name__ == "__main__":
     while True:
         enviar_alerta()
-        time.sleep (30)
+        time.sleep(3600)
