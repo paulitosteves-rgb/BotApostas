@@ -78,4 +78,4 @@ def enviar_alerta():
 if __name__ == "__main__":
     while True:
         enviar_alerta()
-        time.sleep(30 * 60) # executa a cada 1 hora
+        time.sleep (30)
