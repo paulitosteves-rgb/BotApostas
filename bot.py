@@ -46,9 +46,9 @@ def buscar_jogos():
             # regra simples: alterna padrões
             if jogo_id % 2 == 0:
                 probabilidade = 70
-                mercado = "Over 2.5 gols"
+                mercado = "Over 1.5 gols"
             else:
-                probabilidade = 65
+                probabilidade = 50
                 mercado = "BTTS (Ambas Marcam)"
 
             # 🔥 FILTRO DE VALOR
