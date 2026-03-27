@@ -44,7 +44,7 @@ def buscar_jogos():
             total_gols = gols_home + gols_away
 
             # 🔥 FILTRO DE OPORTUNIDADE
-            if total_gols >= 2:
+            if total_gols >= 1:
                 jogos.append(
                     f"""🔥 OPORTUNIDADE
 
