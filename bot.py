@@ -6,27 +6,39 @@ CHAT_ID = "SEU_CHAT_ID"
 
 bot = Bot(token=TOKEN)
 
+import requests
+import os
+
 def buscar_jogos():
-    # API gratuita de exemplo (pode trocar depois)
-    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures?live=all"
+    import requests
+    import os
+
+    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures?date=2026-03-27"
 
     headers = {
-        "X-RapidAPI-Key": "SUA_API_KEY",
+        "X-RapidAPI-Key": os.getenv("API_KEY"),
         "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
     }
 
-    response = requests.get(url, headers=headers)
-    data = response.json()
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
 
-    jogos = []
+        print("DEBUG API:", data)  # 👈 vai aparecer no Railway
 
-    for jogo in data["response"]:
-        home = jogo["teams"]["home"]["name"]
-        away = jogo["teams"]["away"]["name"]
+        if "response" not in data or not data["response"]:
+            return ["⚠️ Nenhum jogo encontrado ou erro na API"]
 
-        jogos.append(f"{home} x {away}")
+        jogos = []
+        for jogo in data["response"]:
+            home = jogo["teams"]["home"]["name"]
+            away = jogo["teams"]["away"]["name"]
+            jogos.append(f"{home} x {away}")
 
-    return jogos
+        return jogos
+
+    except Exception as e:
+        return [f"Erro geral: {str(e)}"]
 
 def enviar_alerta():
     jogos = buscar_jogos()
