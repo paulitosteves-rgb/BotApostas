@@ -52,7 +52,7 @@ def buscar_jogos():
                 mercado = "BTTS (Ambas Marcam)"
 
             # 🔥 FILTRO DE VALOR
-            if probabilidade >= 65:
+            if True:
                 oportunidades.append(
                     f"""🔥 ALERTA PRÉ-JOGO
 
