@@ -3,6 +3,7 @@ import os
 import asyncio
 from datetime import datetime
 from telegram import Bot
+import time
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -12,84 +13,102 @@ bot = Bot(token=TOKEN)
 
 team_cache = {}
 
+BASE_URL = "https://v3.football.api-sports.io"
 
+
+# ==============================
+# 🔁 REQUEST COM RETRY
+# ==============================
+def fazer_request(url, tentativas=3):
+    headers = {
+        "x-apisports-key": API_KEY
+    }
+
+    for i in range(tentativas):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            data = response.json()
+
+            if "response" in data:
+                return data
+
+            print(f"⚠️ Tentativa {i+1} falhou:", data)
+
+        except Exception as e:
+            print(f"Erro tentativa {i+1}:", e)
+
+        time.sleep(2)
+
+    return None
+
+
+# ==============================
+# 📊 STATS DOS TIMES
+# ==============================
 def get_team_stats(team_id):
     if team_id in team_cache:
         return team_cache[team_id]
 
-    url = f"https://api-football-v1.p.rapidapi.com/v3/fixtures?team={team_id}&last=5"
+    url = f"{BASE_URL}/fixtures?team={team_id}&last=5"
 
-    headers = {
-        "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
-    }
+    data = fazer_request(url)
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
-
-        if "response" not in data:
-            return None
-
-        gols_feitos = 0
-        gols_sofridos = 0
-        jogos = 0
-
-        for jogo in data["response"]:
-            home_id = jogo["teams"]["home"]["id"]
-            away_id = jogo["teams"]["away"]["id"]
-
-            gols_home = jogo["goals"]["home"]
-            gols_away = jogo["goals"]["away"]
-
-            if gols_home is None or gols_away is None:
-                continue
-
-            if team_id == home_id:
-                gols_feitos += gols_home
-                gols_sofridos += gols_away
-            else:
-                gols_feitos += gols_away
-                gols_sofridos += gols_home
-
-            jogos += 1
-
-        if jogos == 0:
-            return None
-
-        stats = {
-            "media_feitos": gols_feitos / jogos,
-            "media_sofridos": gols_sofridos / jogos
-        }
-
-        team_cache[team_id] = stats
-        return stats
-
-    except:
+    if not data:
         return None
 
+    gols_feitos = 0
+    gols_sofridos = 0
+    jogos = 0
 
+    for jogo in data["response"]:
+        home_id = jogo["teams"]["home"]["id"]
+        away_id = jogo["teams"]["away"]["id"]
+
+        gols_home = jogo["goals"]["home"]
+        gols_away = jogo["goals"]["away"]
+
+        if gols_home is None or gols_away is None:
+            continue
+
+        if team_id == home_id:
+            gols_feitos += gols_home
+            gols_sofridos += gols_away
+        else:
+            gols_feitos += gols_away
+            gols_sofridos += gols_home
+
+        jogos += 1
+
+    if jogos == 0:
+        return None
+
+    stats = {
+        "media_feitos": gols_feitos / jogos,
+        "media_sofridos": gols_sofridos / jogos
+    }
+
+    team_cache[team_id] = stats
+    return stats
+
+
+# ==============================
+# 📊 BUSCAR JOGOS
+# ==============================
 def buscar_jogos():
     data_hoje = datetime.now().strftime("%Y-%m-%d")
 
-    url = f"https://api-football-v1.p.rapidapi.com/v3/fixtures?date={data_hoje}"
+    url = f"{BASE_URL}/fixtures?date={data_hoje}"
 
-    headers = {
-        "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
-    }
+    data = fazer_request(url)
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
+    if not data:
+        return ["🤖 API instável, tentando novamente depois"]
 
-        if "response" not in data:
-            return ["Erro API"]
+    oportunidades = []
+    fallback = []
 
-        oportunidades = []
-        fallback = []
-
-        for jogo in data["response"][:15]:
+    for jogo in data["response"][:15]:
+        try:
             status = jogo["fixture"]["status"]["short"]
 
             if status not in ["NS", "TBD"]:
@@ -116,35 +135,32 @@ def buscar_jogos():
 
             prob = int(media_total * 20)
 
-            texto = f"""{home} x {away}
-📊 Média total: {media_total:.2f}
-"""
-
-            fallback.append((prob, texto))
+            fallback.append((prob, f"{home} x {away} | Média: {media_total:.2f}"))
 
             if media_total >= 2.0:
                 oportunidades.append((prob, f"""🔥 OPORTUNIDADE
 
 {home} x {away}
-✔️ Over 2.5
-📊 Prob: {prob}%
+✔️ Over 2.5 gols
+📊 Probabilidade: {prob}%
 """))
 
-        # 🔥 SE NÃO TEM OPORTUNIDADE → USA FALLBACK
-        if not oportunidades:
-            fallback.sort(reverse=True, key=lambda x: x[0])
+        except Exception as e:
+            print("Erro jogo:", e)
+            continue
 
-            return [f"📊 MELHORES JOGOS DO DIA\n\n" +
-                    "\n".join([f"{f[1]}" for f in fallback[:5]])]
+    if not oportunidades:
+        fallback.sort(reverse=True)
+        return [f"📊 MELHORES JOGOS DO DIA\n\n" +
+                "\n".join([f[1] for f in fallback[:5]])]
 
-        oportunidades.sort(reverse=True, key=lambda x: x[0])
-
-        return [o[1] for o in oportunidades[:5]]
-
-    except Exception as e:
-        return [f"Erro: {str(e)}"]
+    oportunidades.sort(reverse=True)
+    return [o[1] for o in oportunidades[:5]]
 
 
+# ==============================
+# 📲 TELEGRAM
+# ==============================
 async def enviar_alerta():
     jogos = buscar_jogos()
 
@@ -153,11 +169,18 @@ async def enviar_alerta():
     for j in jogos:
         mensagem += j + "\n"
 
-    await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+    try:
+        await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+        print("✅ Enviado")
+    except Exception as e:
+        print("Erro Telegram:", e)
 
 
+# ==============================
+# 🔁 LOOP
+# ==============================
 async def main():
-    print("Bot rodando...")
+    print("🚀 Bot rodando com API oficial...")
 
     while True:
         await enviar_alerta()
