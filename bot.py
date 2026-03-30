@@ -5,6 +5,9 @@ from datetime import datetime
 from telegram import Bot
 import time
 
+# ==============================
+# 🔐 CONFIG
+# ==============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
@@ -133,11 +136,13 @@ def buscar_jogos():
                 + stats_away["media_sofridos"]
             ) / 2
 
-            prob = int(media_total * 20)
+            # 🔥 AJUSTE MAIS SENSÍVEL
+            prob = int(media_total * 25)
 
             fallback.append((prob, f"{home} x {away} | Média: {media_total:.2f}"))
 
-            if media_total >= 2.0:
+            # 🔥 CRITÉRIO MAIS FLEXÍVEL
+            if media_total >= 1.8:
                 oportunidades.append((prob, f"""🔥 OPORTUNIDADE
 
 {home} x {away}
@@ -151,8 +156,10 @@ def buscar_jogos():
 
     if not oportunidades:
         fallback.sort(reverse=True)
-        return [f"📊 MELHORES JOGOS DO DIA\n\n" +
-                "\n".join([f[1] for f in fallback[:5]])]
+        return [f"""📊 MELHORES JOGOS DO DIA
+
+{chr(10).join([f[1] for f in fallback[:5]])}
+"""]
 
     oportunidades.sort(reverse=True)
     return [o[1] for o in oportunidades[:5]]
@@ -180,12 +187,15 @@ async def enviar_alerta():
 # 🔁 LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando com API oficial...")
+    print("🚀 Bot rodando (modo ajustado)...")
 
     while True:
         await enviar_alerta()
         await asyncio.sleep(120)
 
 
+# ==============================
+# ▶️ START
+# ==============================
 if __name__ == "__main__":
     asyncio.run(main())
