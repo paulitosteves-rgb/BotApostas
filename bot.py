@@ -5,9 +5,6 @@ from datetime import datetime
 from telegram import Bot
 import time
 
-# ==============================
-# 🔐 CONFIG
-# ==============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
@@ -18,14 +15,13 @@ team_cache = {}
 
 BASE_URL = "https://v3.football.api-sports.io"
 
+# 🔥 LIGAS PRIORITÁRIAS
+LEAGUES = [39, 140, 78, 135, 71, 94]  
+# Inglaterra, Espanha, Alemanha, Itália, França, Brasil
 
-# ==============================
-# 🔁 REQUEST COM RETRY
-# ==============================
+
 def fazer_request(url, tentativas=3):
-    headers = {
-        "x-apisports-key": API_KEY
-    }
+    headers = {"x-apisports-key": API_KEY}
 
     for i in range(tentativas):
         try:
@@ -35,25 +31,19 @@ def fazer_request(url, tentativas=3):
             if "response" in data:
                 return data
 
-            print(f"⚠️ Tentativa {i+1} falhou:", data)
-
         except Exception as e:
-            print(f"Erro tentativa {i+1}:", e)
+            print("Erro:", e)
 
         time.sleep(2)
 
     return None
 
 
-# ==============================
-# 📊 STATS
-# ==============================
 def get_team_stats(team_id):
     if team_id in team_cache:
         return team_cache[team_id]
 
     url = f"{BASE_URL}/fixtures?team={team_id}&last=5"
-
     data = fazer_request(url)
 
     if not data:
@@ -64,21 +54,18 @@ def get_team_stats(team_id):
     jogos = 0
 
     for jogo in data["response"]:
-        home_id = jogo["teams"]["home"]["id"]
-        away_id = jogo["teams"]["away"]["id"]
+        g_home = jogo["goals"]["home"]
+        g_away = jogo["goals"]["away"]
 
-        gols_home = jogo["goals"]["home"]
-        gols_away = jogo["goals"]["away"]
-
-        if gols_home is None or gols_away is None:
+        if g_home is None or g_away is None:
             continue
 
-        if team_id == home_id:
-            gols_feitos += gols_home
-            gols_sofridos += gols_away
+        if jogo["teams"]["home"]["id"] == team_id:
+            gols_feitos += g_home
+            gols_sofridos += g_away
         else:
-            gols_feitos += gols_away
-            gols_sofridos += gols_home
+            gols_feitos += g_away
+            gols_sofridos += g_home
 
         jogos += 1
 
@@ -94,85 +81,69 @@ def get_team_stats(team_id):
     return stats
 
 
-# ==============================
-# 📊 BUSCAR JOGOS
-# ==============================
 def buscar_jogos():
     data_hoje = datetime.now().strftime("%Y-%m-%d")
 
-    url = f"{BASE_URL}/fixtures?date={data_hoje}"
-
-    data = fazer_request(url)
-
-    if not data:
-        return ["🤖 API instável, tentando novamente depois"]
-
     oportunidades = []
-    fallback = []
 
-    for jogo in data["response"][:15]:
-        try:
-            status = jogo["fixture"]["status"]["short"]
+    for league in LEAGUES:
+        url = f"{BASE_URL}/fixtures?date={data_hoje}&league={league}"
+        data = fazer_request(url)
 
-            if status not in ["NS", "TBD"]:
-                continue
-
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
-
-            home_id = jogo["teams"]["home"]["id"]
-            away_id = jogo["teams"]["away"]["id"]
-
-            stats_home = get_team_stats(home_id)
-            stats_away = get_team_stats(away_id)
-
-            if not stats_home or not stats_away:
-                continue
-
-            media_total = (
-                stats_home["media_feitos"]
-                + stats_home["media_sofridos"]
-                + stats_away["media_feitos"]
-                + stats_away["media_sofridos"]
-            ) / 2
-
-            prob = int(media_total * 25)
-
-            fallback.append((prob, home, away, media_total))
-
-            # 🔥 critério mais leve ainda
-            if media_total >= 1.6:
-                oportunidades.append((prob, home, away))
-
-        except Exception as e:
-            print("Erro jogo:", e)
+        if not data:
             continue
 
-    # 🔥 GARANTIR SINAL
+        for jogo in data["response"]:
+            try:
+                status = jogo["fixture"]["status"]["short"]
+
+                if status not in ["NS", "TBD"]:
+                    continue
+
+                home = jogo["teams"]["home"]["name"]
+                away = jogo["teams"]["away"]["name"]
+
+                home_id = jogo["teams"]["home"]["id"]
+                away_id = jogo["teams"]["away"]["id"]
+
+                stats_home = get_team_stats(home_id)
+                stats_away = get_team_stats(away_id)
+
+                # 🔥 SE NÃO TEM STATS → AINDA MANDA
+                if not stats_home or not stats_away:
+                    oportunidades.append(f"""🔥 JOGO DO DIA
+
+{home} x {away}
+📊 Sem dados suficientes (novo time/liga)
+""")
+                    continue
+
+                media_total = (
+                    stats_home["media_feitos"]
+                    + stats_home["media_sofridos"]
+                    + stats_away["media_feitos"]
+                    + stats_away["media_sofridos"]
+                ) / 2
+
+                prob = int(media_total * 25)
+
+                oportunidades.append(f"""🔥 OPORTUNIDADE
+
+{home} x {away}
+✔️ Over 2.5 gols
+📊 Probabilidade: {prob}%
+""")
+
+            except Exception as e:
+                print("Erro jogo:", e)
+                continue
+
     if not oportunidades:
-        fallback.sort(reverse=True)
-        oportunidades = fallback[:2]  # pega os 2 melhores
+        return ["🤖 Nenhum jogo encontrado hoje"]
 
-        return [f"""🔥 OPORTUNIDADE (FORÇADA)
-
-{o[1]} x {o[2]}
-✔️ Over 2.5 gols
-📊 Probabilidade: {o[0]}%
-""" for o in oportunidades]
-
-    oportunidades.sort(reverse=True)
-
-    return [f"""🔥 OPORTUNIDADE
-
-{o[1]} x {o[2]}
-✔️ Over 2.5 gols
-📊 Probabilidade: {o[0]}%
-""" for o in oportunidades[:5]]
+    return oportunidades[:5]
 
 
-# ==============================
-# 📲 TELEGRAM
-# ==============================
 async def enviar_alerta():
     jogos = buscar_jogos()
 
@@ -188,19 +159,13 @@ async def enviar_alerta():
         print("Erro Telegram:", e)
 
 
-# ==============================
-# 🔁 LOOP
-# ==============================
 async def main():
-    print("🚀 Bot rodando (modo garantia de sinal)...")
+    print("🚀 Bot rodando (ligas filtradas)...")
 
     while True:
         await enviar_alerta()
         await asyncio.sleep(120)
 
 
-# ==============================
-# ▶️ START
-# ==============================
 if __name__ == "__main__":
     asyncio.run(main())
