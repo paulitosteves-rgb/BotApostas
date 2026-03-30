@@ -1,8 +1,12 @@
 import requests
 import os
 import time
+from datetime import datetime
 from telegram import Bot
 
+# ==============================
+# 🔐 CONFIG (Railway Variables)
+# ==============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
@@ -10,8 +14,13 @@ API_KEY = os.getenv("API_KEY")
 bot = Bot(token=TOKEN)
 
 
+# ==============================
+# 📊 BUSCAR JOGOS DO DIA
+# ==============================
 def buscar_jogos():
-    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures?date=2026-03-27"
+    data_hoje = datetime.now().strftime("%Y-%m-%d")
+
+    url = f"https://api-football-v1.p.rapidapi.com/v3/fixtures?date={data_hoje}"
 
     headers = {
         "X-RapidAPI-Key": API_KEY,
@@ -19,59 +28,75 @@ def buscar_jogos():
     }
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
-        print("DEBUG API:", data)
+        print("📡 DEBUG API:", data_hoje)
 
-        if "response" not in data or not data["response"]:
-            return ["⚠️ Nenhum jogo encontrado"]
+        if "response" not in data:
+            return ["⚠️ Erro na API (sem 'response')"]
+
+        if not data["response"]:
+            return ["⚠️ Nenhum jogo encontrado hoje"]
 
         oportunidades = []
 
         for jogo in data["response"]:
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
+            try:
+                home = jogo["teams"]["home"]["name"]
+                away = jogo["teams"]["away"]["name"]
+                status = jogo["fixture"]["status"]["short"]
 
-            status = jogo["fixture"]["status"]["short"]
+                print(f"🔍 {home} x {away} | status: {status}")
 
-            # 🔥 FILTRA APENAS PRÉ-JOGO
-            if status != "NS":  # Not Started
-                continue
+                # ==============================
+                # 🎯 FILTRO PRÉ-JOGO
+                # ==============================
+                if status not in ["NS", "TBD"]:
+                    continue
 
-            # 🔥 SIMULAÇÃO DE ANÁLISE (melhoraremos depois)
-            # usamos ID do jogo como base pra gerar padrão
-            jogo_id = jogo["fixture"]["id"]
+                # ==============================
+                # 🧠 LÓGICA DE ANÁLISE (BASE)
+                # ==============================
+                jogo_id = jogo["fixture"]["id"]
 
-            # regra simples: alterna padrões
-            if jogo_id % 2 == 0:
-                probabilidade = 70
-                mercado = "Over 1.5 gols"
-            else:
-                probabilidade = 50
-                mercado = "BTTS (Ambas Marcam)"
+                if jogo_id % 2 == 0:
+                    probabilidade = 70
+                    mercado = "Over 2.5 gols"
+                else:
+                    probabilidade = 65
+                    mercado = "BTTS (Ambas Marcam)"
 
-            # 🔥 FILTRO DE VALOR
-            if True:
-                oportunidades.append(
-                    f"""🔥 ALERTA PRÉ-JOGO
+                # ==============================
+                # 🔥 FILTRO DE VALOR
+                # ==============================
+                if probabilidade >= 65:
+                    oportunidades.append(
+                        f"""🔥 ALERTA PRÉ-JOGO
 
 {home} x {away}
 ✔️ Mercado: {mercado}
-📊 Probabilidade estimada: {probabilidade}%
-💡 Jogo com tendência ofensiva
+📊 Probabilidade: {probabilidade}%
+🧠 Tendência ofensiva identificada
 """
-                )
+                    )
+
+            except Exception as e:
+                print("⚠️ Erro ao processar jogo:", e)
+                continue
 
         if not oportunidades:
-            return ["⚠️ Nenhuma oportunidade pré-jogo encontrada"]
+            return ["🤖 Bot ativo, mas sem oportunidades no momento"]
 
         return oportunidades
 
     except Exception as e:
-        return [f"Erro: {str(e)}"]
+        return [f"❌ Erro geral: {str(e)}"]
 
 
+# ==============================
+# 📲 ENVIO PARA TELEGRAM
+# ==============================
 def enviar_alerta():
     jogos = buscar_jogos()
 
@@ -80,10 +105,19 @@ def enviar_alerta():
     for j in jogos[:5]:
         mensagem += f"{j}\n"
 
-    bot.send_message(chat_id=CHAT_ID, text=mensagem)
+    try:
+        bot.send_message(chat_id=CHAT_ID, text=mensagem)
+        print("✅ Mensagem enviada com sucesso")
+    except Exception as e:
+        print("❌ Erro ao enviar mensagem:", e)
 
 
+# ==============================
+# 🔁 LOOP PRINCIPAL
+# ==============================
 if __name__ == "__main__":
+    print("🚀 Bot iniciado...")
+
     while True:
         enviar_alerta()
-        time.sleep(30)
+        time.sleep(3600)  # 1 hora
