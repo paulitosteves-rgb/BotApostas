@@ -1,7 +1,7 @@
 import requests
 import os
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Bot
 import time
 
@@ -14,27 +14,35 @@ bot = Bot(token=TOKEN)
 BASE_URL = "https://v3.football.api-sports.io"
 team_cache = {}
 
-# 🔥 LIGAS DE QUALIDADE
-LEAGUES = [39, 140, 135, 78, 61, 71, 94, 128, 253]
-
-STATUS_VALIDOS = ["NS", "TBD", "LIVE"]
+LEAGUES = [39, 140, 135, 78, 61, 71]
+STATUS_VALIDOS = ["NS"]
 
 
-def fazer_request(url, tentativas=3):
+def fazer_request(url):
     headers = {"x-apisports-key": API_KEY}
 
-    for _ in range(tentativas):
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        return response.json()
+    except:
+        return None
 
-            if "response" in data:
-                return data
 
-        except:
-            pass
+def get_odds(fixture_id):
+    url = f"{BASE_URL}/odds?fixture={fixture_id}"
+    data = fazer_request(url)
 
-        time.sleep(2)
+    try:
+        bookmakers = data["response"][0]["bookmakers"]
+
+        for book in bookmakers:
+            for bet in book["bets"]:
+                if bet["name"] == "Goals Over/Under":
+                    for value in bet["values"]:
+                        if value["value"] == "Over 2.5":
+                            return float(value["odd"])
+    except:
+        return None
 
     return None
 
@@ -46,122 +54,102 @@ def get_team_stats(team_id):
     url = f"{BASE_URL}/fixtures?team={team_id}&last=5"
     data = fazer_request(url)
 
-    if not data:
+    if not data or not data["response"]:
         return None
 
-    gols_feitos = 0
-    gols_sofridos = 0
+    gols = 0
     jogos = 0
 
-    for jogo in data["response"]:
-        g_home = jogo["goals"]["home"]
-        g_away = jogo["goals"]["away"]
-
-        if g_home is None or g_away is None:
+    for j in data["response"]:
+        if j["goals"]["home"] is None:
             continue
 
-        if jogo["teams"]["home"]["id"] == team_id:
-            gols_feitos += g_home
-            gols_sofridos += g_away
-        else:
-            gols_feitos += g_away
-            gols_sofridos += g_home
-
+        gols += j["goals"]["home"] + j["goals"]["away"]
         jogos += 1
 
     if jogos == 0:
         return None
 
-    stats = {
-        "media_feitos": gols_feitos / jogos,
-        "media_sofridos": gols_sofridos / jogos
-    }
+    media = gols / jogos
 
-    team_cache[team_id] = stats
-    return stats
+    team_cache[team_id] = media
+    return media
 
 
 def buscar_jogos():
-    data_hoje = datetime.now().strftime("%Y-%m-%d")
-
-    resultados = []
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    oportunidades = []
 
     for league in LEAGUES:
-        url = f"{BASE_URL}/fixtures?date={data_hoje}&league={league}"
+        url = f"{BASE_URL}/fixtures?date={hoje}&league={league}"
         data = fazer_request(url)
 
         if not data:
             continue
 
         for jogo in data["response"]:
-            try:
-                status = jogo["fixture"]["status"]["short"]
-
-                if status not in STATUS_VALIDOS:
-                    continue
-
-                home = jogo["teams"]["home"]["name"]
-                away = jogo["teams"]["away"]["name"]
-
-                home_id = jogo["teams"]["home"]["id"]
-                away_id = jogo["teams"]["away"]["id"]
-
-                stats_home = get_team_stats(home_id)
-                stats_away = get_team_stats(away_id)
-
-                # 🔥 COM DADOS
-                if stats_home and stats_away:
-                    media_total = (
-                        stats_home["media_feitos"]
-                        + stats_home["media_sofridos"]
-                        + stats_away["media_feitos"]
-                        + stats_away["media_sofridos"]
-                    ) / 2
-
-                    prob = int(media_total * 25)
-
-                    resultados.append(f"""🔥 OPORTUNIDADE
-
-{home} x {away}
-✔️ Over 2.5 gols
-📊 Probabilidade: {prob}%
-""")
-
-                # 🔥 SEM DADOS (MAS LIGA BOA)
-                else:
-                    resultados.append(f"""📊 JOGO RELEVANTE
-
-{home} x {away}
-⚠️ Dados limitados (liga principal)
-""")
-
-            except Exception as e:
-                print("Erro:", e)
+            if jogo["fixture"]["status"]["short"] not in STATUS_VALIDOS:
                 continue
 
-    if not resultados:
-        return ["🤖 Nenhum jogo relevante encontrado hoje"]
+            home = jogo["teams"]["home"]["name"]
+            away = jogo["teams"]["away"]["name"]
 
-    return resultados[:5]
+            home_id = jogo["teams"]["home"]["id"]
+            away_id = jogo["teams"]["away"]["id"]
+
+            fixture_id = jogo["fixture"]["id"]
+
+            media_home = get_team_stats(home_id)
+            media_away = get_team_stats(away_id)
+
+            if not media_home or not media_away:
+                continue
+
+            media_total = (media_home + media_away) / 2
+            prob = media_total / 4  # escala simples
+
+            odd = get_odds(fixture_id)
+
+            if not odd:
+                continue
+
+            prob_odd = 1 / odd
+
+            # 🔥 FILTRO EV+
+            if prob > prob_odd:
+                oportunidades.append(f"""🔥 ENTRADA DE VALOR
+
+{home} x {away}
+🎯 Over 2.5 gols
+
+📊 Prob: {round(prob*100)}%
+💰 Odd: {odd}
+📈 Valor: POSITIVO
+""")
+
+    if not oportunidades:
+        return ["📊 Sem entradas de valor agora"]
+
+    return oportunidades[:5]
 
 
 async def enviar_alerta():
     jogos = buscar_jogos()
 
-    mensagem = "📊 ANÁLISE DO DIA (LIGAS PRINCIPAIS)\n\n"
+    msg = "💰 OPORTUNIDADES EV+\n\n"
 
     for j in jogos:
-        mensagem += j + "\n"
+        msg += j + "\n"
 
-    await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+    await bot.send_message(chat_id=CHAT_ID, text=msg)
 
 
 async def main():
-    print("🚀 Bot rodando (modo profissional)...")
+    print("🚀 Bot EV+ rodando...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(120)
+        await asyncio.sleep(300)
 
 
 if __name__ == "__main__":
