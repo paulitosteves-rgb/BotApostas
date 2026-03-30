@@ -35,6 +35,7 @@ def get_team_stats(team_id):
         data = response.json()
 
         if "response" not in data:
+            print("Erro stats API:", data)
             return None
 
         gols_feitos = 0
@@ -93,12 +94,16 @@ def buscar_jogos():
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
+        print("📡 DEBUG FIXTURES:", data_hoje)
+
         if "response" not in data:
             return [f"❌ API erro: {data}"]
 
+        print("TOTAL JOGOS HOJE:", len(data["response"]))
+
         oportunidades = []
 
-        jogos_lista = data["response"][:10]
+        jogos_lista = data["response"][:15]  # 🔥 aumentamos quantidade
 
         for jogo in jogos_lista:
             try:
@@ -126,25 +131,25 @@ def buscar_jogos():
                     + stats_away["media_sofridos"]
                 ) / 2
 
-                # 🔥 AJUSTE MAIS FLEXÍVEL
-                if media_total >= 2.4:
+                # 🔥 SUPER FLEXÍVEL
+                if media_total >= 2.0:
                     mercado = "Over 2.5 gols"
-                    prob = min(int(media_total * 25), 85)
+                    prob = min(int(media_total * 20), 85)
 
                 elif (
-                    stats_home["media_feitos"] >= 1.1
-                    and stats_away["media_feitos"] >= 1.1
+                    stats_home["media_feitos"] >= 0.8
+                    and stats_away["media_feitos"] >= 0.8
                 ):
                     mercado = "BTTS"
-                    prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 30), 80)
+                    prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 25), 80)
 
                 else:
                     continue
 
-                # 🔥 FILTRO MAIS BAIXO
-                if prob >= 50:
+                # 🔥 QUASE SEM FILTRO
+                if prob >= 40:
                     oportunidades.append({
-                        "msg": f"""🔥 ALERTA TESTE
+                        "msg": f"""🔥 ALERTA (MODO CALIBRAÇÃO)
 
 {home} x {away}
 ✔️ {mercado}
@@ -177,14 +182,14 @@ def buscar_jogos():
 async def enviar_alerta():
     jogos = buscar_jogos()
 
-    mensagem = "📊 ALERTAS (MODO TESTE)\n\n"
+    mensagem = "📊 ALERTAS (MODO CALIBRAÇÃO)\n\n"
 
     for j in jogos:
         if "Erro" in j or "API" in j:
             continue
         mensagem += j + "\n"
 
-    if mensagem.strip() == "📊 ALERTAS (MODO TESTE)":
+    if mensagem.strip() == "📊 ALERTAS (MODO CALIBRAÇÃO)":
         mensagem += "\n🤖 Sem oportunidades no momento"
 
     try:
@@ -198,11 +203,11 @@ async def enviar_alerta():
 # 🔁 LOOP
 # ==============================
 async def main():
-    print("🚀 Bot iniciado (modo teste)...")
+    print("🚀 Bot iniciado (modo calibração)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(120)  # 🔥 teste a cada 2 minutos
+        await asyncio.sleep(120)  # 🔥 2 minutos
 
 
 # ==============================
