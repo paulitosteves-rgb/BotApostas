@@ -34,9 +34,6 @@ def get_team_stats(team_id):
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
-        # 🔥 DEBUG
-        print("DEBUG TEAM API:", data)
-
         if "response" not in data:
             return None
 
@@ -96,10 +93,8 @@ def buscar_jogos():
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
-        print("📡 DEBUG FIXTURES:", data)
-
         if "response" not in data:
-            return [f"❌ API retornou erro: {data}"]
+            return [f"❌ API erro: {data}"]
 
         oportunidades = []
 
@@ -131,13 +126,14 @@ def buscar_jogos():
                     + stats_away["media_sofridos"]
                 ) / 2
 
-                if media_total >= 2.8:
+                # 🔥 AJUSTE MAIS FLEXÍVEL
+                if media_total >= 2.4:
                     mercado = "Over 2.5 gols"
                     prob = min(int(media_total * 25), 85)
 
                 elif (
-                    stats_home["media_feitos"] >= 1.3
-                    and stats_away["media_feitos"] >= 1.3
+                    stats_home["media_feitos"] >= 1.1
+                    and stats_away["media_feitos"] >= 1.1
                 ):
                     mercado = "BTTS"
                     prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 30), 80)
@@ -145,9 +141,10 @@ def buscar_jogos():
                 else:
                     continue
 
-                if prob >= 60:
+                # 🔥 FILTRO MAIS BAIXO
+                if prob >= 50:
                     oportunidades.append({
-                        "msg": f"""🔥 ALERTA PROFISSIONAL
+                        "msg": f"""🔥 ALERTA TESTE
 
 {home} x {away}
 ✔️ {mercado}
@@ -180,15 +177,15 @@ def buscar_jogos():
 async def enviar_alerta():
     jogos = buscar_jogos()
 
-    mensagem = "📊 TOP OPORTUNIDADES DO DIA\n\n"
+    mensagem = "📊 ALERTAS (MODO TESTE)\n\n"
 
     for j in jogos:
         if "Erro" in j or "API" in j:
             continue
         mensagem += j + "\n"
 
-    if mensagem.strip() == "📊 TOP OPORTUNIDADES DO DIA":
-        mensagem += "\n🤖 Bot ativo, sem oportunidades no momento"
+    if mensagem.strip() == "📊 ALERTAS (MODO TESTE)":
+        mensagem += "\n🤖 Sem oportunidades no momento"
 
     try:
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
@@ -201,11 +198,11 @@ async def enviar_alerta():
 # 🔁 LOOP
 # ==============================
 async def main():
-    print("🚀 Bot iniciado (async)...")
+    print("🚀 Bot iniciado (modo teste)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(30)
+        await asyncio.sleep(120)  # 🔥 teste a cada 2 minutos
 
 
 # ==============================
