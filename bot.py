@@ -1,19 +1,24 @@
 import requests
 import os
-import time
+import asyncio
 from datetime import datetime
 from telegram import Bot
 
+# ==============================
+# 🔐 CONFIG
+# ==============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
 
 bot = Bot(token=TOKEN)
 
-# 🔥 CACHE DE TIMES (evita múltiplas chamadas)
+# 🔥 CACHE
 team_cache = {}
 
-
+# ==============================
+# 📊 BUSCAR ESTATÍSTICAS
+# ==============================
 def get_team_stats(team_id):
     if team_id in team_cache:
         return team_cache[team_id]
@@ -66,10 +71,14 @@ def get_team_stats(team_id):
         team_cache[team_id] = stats
         return stats
 
-    except:
+    except Exception as e:
+        print("Erro stats:", e)
         return None
 
 
+# ==============================
+# 📊 BUSCAR JOGOS
+# ==============================
 def buscar_jogos():
     data_hoje = datetime.now().strftime("%Y-%m-%d")
 
@@ -89,76 +98,81 @@ def buscar_jogos():
 
         oportunidades = []
 
-        # 🔥 LIMITA A 10 JOGOS (controle API)
         jogos_lista = data["response"][:10]
 
         for jogo in jogos_lista:
-            status = jogo["fixture"]["status"]["short"]
+            try:
+                status = jogo["fixture"]["status"]["short"]
 
-            if status not in ["NS", "TBD"]:
-                continue
+                if status not in ["NS", "TBD"]:
+                    continue
 
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
+                home = jogo["teams"]["home"]["name"]
+                away = jogo["teams"]["away"]["name"]
 
-            home_id = jogo["teams"]["home"]["id"]
-            away_id = jogo["teams"]["away"]["id"]
+                home_id = jogo["teams"]["home"]["id"]
+                away_id = jogo["teams"]["away"]["id"]
 
-            stats_home = get_team_stats(home_id)
-            stats_away = get_team_stats(away_id)
+                stats_home = get_team_stats(home_id)
+                stats_away = get_team_stats(away_id)
 
-            if not stats_home or not stats_away:
-                continue
+                if not stats_home or not stats_away:
+                    continue
 
-            media_total = (
-                stats_home["media_feitos"]
-                + stats_home["media_sofridos"]
-                + stats_away["media_feitos"]
-                + stats_away["media_sofridos"]
-            ) / 2
+                media_total = (
+                    stats_home["media_feitos"]
+                    + stats_home["media_sofridos"]
+                    + stats_away["media_feitos"]
+                    + stats_away["media_sofridos"]
+                ) / 2
 
-            # 🔥 DECISÃO MAIS INTELIGENTE
-            if media_total >= 2.8:
-                mercado = "Over 2.5 gols"
-                prob = min(int(media_total * 25), 85)
+                if media_total >= 2.8:
+                    mercado = "Over 2.5 gols"
+                    prob = min(int(media_total * 25), 85)
 
-            elif (
-                stats_home["media_feitos"] >= 1.3
-                and stats_away["media_feitos"] >= 1.3
-            ):
-                mercado = "BTTS"
-                prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 30), 80)
+                elif (
+                    stats_home["media_feitos"] >= 1.3
+                    and stats_away["media_feitos"] >= 1.3
+                ):
+                    mercado = "BTTS"
+                    prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 30), 80)
 
-            else:
-                continue
+                else:
+                    continue
 
-            if prob >= 65:
-                oportunidades.append({
-                    "msg": f"""🔥 ALERTA PROFISSIONAL
+                if prob >= 60:
+                    oportunidades.append({
+                        "msg": f"""🔥 ALERTA PROFISSIONAL
 
 {home} x {away}
 ✔️ {mercado}
 📊 Probabilidade: {prob}%
 
-📈 {home}: {stats_home['media_feitos']:.2f}⚽ | {stats_home['media_sofridos']:.2f} sofridos
-📈 {away}: {stats_away['media_feitos']:.2f}⚽ | {stats_away['media_sofridos']:.2f} sofridos
+📈 {home}: {stats_home['media_feitos']:.2f}⚽ | {stats_home['media_sofridos']:.2f}
+📈 {away}: {stats_away['media_feitos']:.2f}⚽ | {stats_away['media_sofridos']:.2f}
 """,
-                    "prob": prob
-                })
+                        "prob": prob
+                    })
 
-        # 🔥 ORDENA MELHORES
+            except Exception as e:
+                print("Erro jogo:", e)
+                continue
+
         oportunidades.sort(key=lambda x: x["prob"], reverse=True)
 
         if not oportunidades:
-            return ["🤖 Sem oportunidades com valor hoje"]
+            return ["🤖 Sem oportunidades no momento"]
 
         return [o["msg"] for o in oportunidades[:5]]
 
     except Exception as e:
-        return [f"Erro: {str(e)}"]
+        return [f"Erro geral: {str(e)}"]
 
 
-def enviar_alerta():
+# ==============================
+# 📲 ENVIO (ASYNC)
+# ==============================
+async def enviar_alerta():
     jogos = buscar_jogos()
 
     mensagem = "📊 TOP OPORTUNIDADES DO DIA\n\n"
@@ -166,10 +180,26 @@ def enviar_alerta():
     for j in jogos:
         mensagem += j + "\n"
 
-    bot.send_message(chat_id=CHAT_ID, text=mensagem)
+    try:
+        await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+        print("✅ Mensagem enviada")
+    except Exception as e:
+        print("❌ Erro Telegram:", e)
 
 
-if __name__ == "__main__":
+# ==============================
+# 🔁 LOOP PRINCIPAL ASYNC
+# ==============================
+async def main():
+    print("🚀 Bot iniciado (async)...")
+
     while True:
-        enviar_alerta()
-        time.sleep(30)
+        await enviar_alerta()
+        await asyncio.sleep(30)
+
+
+# ==============================
+# ▶️ START
+# ==============================
+if __name__ == "__main__":
+    asyncio.run(main())
