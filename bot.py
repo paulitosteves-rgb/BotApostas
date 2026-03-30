@@ -17,6 +17,9 @@ bot = Bot(token=TOKEN)
 BASE_URL = "https://v3.football.api-sports.io"
 team_cache = {}
 
+# 🔥 STATUS ACEITOS (AMPLIADO)
+STATUS_VALIDOS = ["NS", "TBD", "LIVE"]
+
 
 # ==============================
 # REQUEST
@@ -112,11 +115,12 @@ def buscar_jogos():
 
     resultados = []
 
-    for jogo in data["response"][:10]:
+    for jogo in data["response"][:15]:
         try:
             status = jogo["fixture"]["status"]["short"]
 
-            if status not in ["NS", "TBD"]:
+            # 🔥 AGORA ACEITA MAIS STATUS
+            if status not in STATUS_VALIDOS:
                 continue
 
             home = jogo["teams"]["home"]["name"]
@@ -128,7 +132,6 @@ def buscar_jogos():
             stats_home = get_team_stats(home_id)
             stats_away = get_team_stats(away_id)
 
-            # 🔥 COM STATS
             if stats_home and stats_away:
                 media_total = (
                     stats_home["media_feitos"]
@@ -144,26 +147,28 @@ def buscar_jogos():
 {home} x {away}
 ✔️ Over 2.5 gols
 📊 Probabilidade: {prob}%
-
-📈 {home}: {stats_home['media_feitos']:.2f}⚽
-📈 {away}: {stats_away['media_feitos']:.2f}⚽
 """)
 
-            # 🔥 SEM STATS (fallback inteligente)
             else:
                 resultados.append(f"""📊 JOGO DO DIA
 
 {home} x {away}
-⚠️ Dados insuficientes (novo time/liga)
-💡 Possível oportunidade ao vivo
+⚠️ Dados limitados
 """)
 
         except Exception as e:
             print("Erro:", e)
             continue
 
+    # 🔥 GARANTIA TOTAL
     if not resultados:
-        return ["🤖 Nenhum jogo analisável"]
+        fallback = data["response"][:5]
+
+        return [f"""📊 JOGO ENCONTRADO
+
+{j['teams']['home']['name']} x {j['teams']['away']['name']}
+⚠️ Sem análise disponível
+""" for j in fallback]
 
     return resultados[:5]
 
@@ -186,7 +191,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo inteligente)...")
+    print("🚀 Bot rodando (versão final estável)...")
 
     while True:
         await enviar_alerta()
