@@ -46,7 +46,7 @@ def fazer_request(url, tentativas=3):
 
 
 # ==============================
-# 📊 STATS DOS TIMES
+# 📊 STATS
 # ==============================
 def get_team_stats(team_id):
     if team_id in team_cache:
@@ -136,33 +136,38 @@ def buscar_jogos():
                 + stats_away["media_sofridos"]
             ) / 2
 
-            # 🔥 AJUSTE MAIS SENSÍVEL
             prob = int(media_total * 25)
 
-            fallback.append((prob, f"{home} x {away} | Média: {media_total:.2f}"))
+            fallback.append((prob, home, away, media_total))
 
-            # 🔥 CRITÉRIO MAIS FLEXÍVEL
-            if media_total >= 1.8:
-                oportunidades.append((prob, f"""🔥 OPORTUNIDADE
-
-{home} x {away}
-✔️ Over 2.5 gols
-📊 Probabilidade: {prob}%
-"""))
+            # 🔥 critério mais leve ainda
+            if media_total >= 1.6:
+                oportunidades.append((prob, home, away))
 
         except Exception as e:
             print("Erro jogo:", e)
             continue
 
+    # 🔥 GARANTIR SINAL
     if not oportunidades:
         fallback.sort(reverse=True)
-        return [f"""📊 MELHORES JOGOS DO DIA
+        oportunidades = fallback[:2]  # pega os 2 melhores
 
-{chr(10).join([f[1] for f in fallback[:5]])}
-"""]
+        return [f"""🔥 OPORTUNIDADE (FORÇADA)
+
+{o[1]} x {o[2]}
+✔️ Over 2.5 gols
+📊 Probabilidade: {o[0]}%
+""" for o in oportunidades]
 
     oportunidades.sort(reverse=True)
-    return [o[1] for o in oportunidades[:5]]
+
+    return [f"""🔥 OPORTUNIDADE
+
+{o[1]} x {o[2]}
+✔️ Over 2.5 gols
+📊 Probabilidade: {o[0]}%
+""" for o in oportunidades[:5]]
 
 
 # ==============================
@@ -187,7 +192,7 @@ async def enviar_alerta():
 # 🔁 LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo ajustado)...")
+    print("🚀 Bot rodando (modo garantia de sinal)...")
 
     while True:
         await enviar_alerta()
