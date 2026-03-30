@@ -4,21 +4,15 @@ import asyncio
 from datetime import datetime
 from telegram import Bot
 
-# ==============================
-# 🔐 CONFIG
-# ==============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
 
 bot = Bot(token=TOKEN)
 
-# 🔥 CACHE
 team_cache = {}
 
-# ==============================
-# 📊 BUSCAR ESTATÍSTICAS
-# ==============================
+
 def get_team_stats(team_id):
     if team_id in team_cache:
         return team_cache[team_id]
@@ -35,7 +29,6 @@ def get_team_stats(team_id):
         data = response.json()
 
         if "response" not in data:
-            print("Erro stats API:", data)
             return None
 
         gols_feitos = 0
@@ -72,14 +65,10 @@ def get_team_stats(team_id):
         team_cache[team_id] = stats
         return stats
 
-    except Exception as e:
-        print("Erro stats:", e)
+    except:
         return None
 
 
-# ==============================
-# 📊 BUSCAR JOGOS
-# ==============================
 def buscar_jogos():
     data_hoje = datetime.now().strftime("%Y-%m-%d")
 
@@ -94,124 +83,86 @@ def buscar_jogos():
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
-        print("📡 DEBUG FIXTURES:", data_hoje)
-
         if "response" not in data:
-            return [f"❌ API erro: {data}"]
-
-        print("TOTAL JOGOS HOJE:", len(data["response"]))
+            return ["Erro API"]
 
         oportunidades = []
+        fallback = []
 
-        jogos_lista = data["response"][:15]  # 🔥 aumentamos quantidade
+        for jogo in data["response"][:15]:
+            status = jogo["fixture"]["status"]["short"]
 
-        for jogo in jogos_lista:
-            try:
-                status = jogo["fixture"]["status"]["short"]
-
-                if status not in ["NS", "TBD"]:
-                    continue
-
-                home = jogo["teams"]["home"]["name"]
-                away = jogo["teams"]["away"]["name"]
-
-                home_id = jogo["teams"]["home"]["id"]
-                away_id = jogo["teams"]["away"]["id"]
-
-                stats_home = get_team_stats(home_id)
-                stats_away = get_team_stats(away_id)
-
-                if not stats_home or not stats_away:
-                    continue
-
-                media_total = (
-                    stats_home["media_feitos"]
-                    + stats_home["media_sofridos"]
-                    + stats_away["media_feitos"]
-                    + stats_away["media_sofridos"]
-                ) / 2
-
-                # 🔥 SUPER FLEXÍVEL
-                if media_total >= 2.0:
-                    mercado = "Over 2.5 gols"
-                    prob = min(int(media_total * 20), 85)
-
-                elif (
-                    stats_home["media_feitos"] >= 0.8
-                    and stats_away["media_feitos"] >= 0.8
-                ):
-                    mercado = "BTTS"
-                    prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 25), 80)
-
-                else:
-                    continue
-
-                # 🔥 QUASE SEM FILTRO
-                if prob >= 40:
-                    oportunidades.append({
-                        "msg": f"""🔥 ALERTA (MODO CALIBRAÇÃO)
-
-{home} x {away}
-✔️ {mercado}
-📊 Probabilidade: {prob}%
-
-📈 {home}: {stats_home['media_feitos']:.2f}⚽ | {stats_home['media_sofridos']:.2f}
-📈 {away}: {stats_away['media_feitos']:.2f}⚽ | {stats_away['media_sofridos']:.2f}
-""",
-                        "prob": prob
-                    })
-
-            except Exception as e:
-                print("Erro jogo:", e)
+            if status not in ["NS", "TBD"]:
                 continue
 
-        oportunidades.sort(key=lambda x: x["prob"], reverse=True)
+            home = jogo["teams"]["home"]["name"]
+            away = jogo["teams"]["away"]["name"]
 
+            home_id = jogo["teams"]["home"]["id"]
+            away_id = jogo["teams"]["away"]["id"]
+
+            stats_home = get_team_stats(home_id)
+            stats_away = get_team_stats(away_id)
+
+            if not stats_home or not stats_away:
+                continue
+
+            media_total = (
+                stats_home["media_feitos"]
+                + stats_home["media_sofridos"]
+                + stats_away["media_feitos"]
+                + stats_away["media_sofridos"]
+            ) / 2
+
+            prob = int(media_total * 20)
+
+            texto = f"""{home} x {away}
+📊 Média total: {media_total:.2f}
+"""
+
+            fallback.append((prob, texto))
+
+            if media_total >= 2.0:
+                oportunidades.append((prob, f"""🔥 OPORTUNIDADE
+
+{home} x {away}
+✔️ Over 2.5
+📊 Prob: {prob}%
+"""))
+
+        # 🔥 SE NÃO TEM OPORTUNIDADE → USA FALLBACK
         if not oportunidades:
-            return ["🤖 Bot ativo, sem oportunidades no momento"]
+            fallback.sort(reverse=True, key=lambda x: x[0])
 
-        return [o["msg"] for o in oportunidades[:5]]
+            return [f"📊 MELHORES JOGOS DO DIA\n\n" +
+                    "\n".join([f"{f[1]}" for f in fallback[:5]])]
+
+        oportunidades.sort(reverse=True, key=lambda x: x[0])
+
+        return [o[1] for o in oportunidades[:5]]
 
     except Exception as e:
-        return [f"❌ Erro geral: {str(e)}"]
+        return [f"Erro: {str(e)}"]
 
 
-# ==============================
-# 📲 ENVIO ASYNC
-# ==============================
 async def enviar_alerta():
     jogos = buscar_jogos()
 
-    mensagem = "📊 ALERTAS (MODO CALIBRAÇÃO)\n\n"
+    mensagem = "📊 ANÁLISE DO DIA\n\n"
 
     for j in jogos:
-        if "Erro" in j or "API" in j:
-            continue
         mensagem += j + "\n"
 
-    if mensagem.strip() == "📊 ALERTAS (MODO CALIBRAÇÃO)":
-        mensagem += "\n🤖 Sem oportunidades no momento"
-
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        print("✅ Mensagem enviada")
-    except Exception as e:
-        print("❌ Erro Telegram:", e)
+    await bot.send_message(chat_id=CHAT_ID, text=mensagem)
 
 
-# ==============================
-# 🔁 LOOP
-# ==============================
 async def main():
-    print("🚀 Bot iniciado (modo calibração)...")
+    print("Bot rodando...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(120)  # 🔥 2 minutos
+        await asyncio.sleep(120)
 
 
-# ==============================
-# ▶️ START
-# ==============================
 if __name__ == "__main__":
     asyncio.run(main())
