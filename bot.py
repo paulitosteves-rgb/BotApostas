@@ -120,4 +120,4 @@ if __name__ == "__main__":
 
     while True:
         enviar_alerta()
-        time.sleep(3600)  # 1 hora
+        time.sleep(30)
