@@ -149,7 +149,7 @@ async def main():
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(300)
+        await asyncio.sleep(3600)
 
 
 if __name__ == "__main__":
