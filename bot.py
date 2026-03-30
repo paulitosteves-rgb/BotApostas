@@ -4,19 +4,72 @@ import time
 from datetime import datetime
 from telegram import Bot
 
-# ==============================
-# 🔐 CONFIG (Railway Variables)
-# ==============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 API_KEY = os.getenv("API_KEY")
 
 bot = Bot(token=TOKEN)
 
+# 🔥 CACHE DE TIMES (evita múltiplas chamadas)
+team_cache = {}
 
-# ==============================
-# 📊 BUSCAR JOGOS DO DIA
-# ==============================
+
+def get_team_stats(team_id):
+    if team_id in team_cache:
+        return team_cache[team_id]
+
+    url = f"https://api-football-v1.p.rapidapi.com/v3/fixtures?team={team_id}&last=5"
+
+    headers = {
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
+
+        gols_feitos = 0
+        gols_sofridos = 0
+        jogos = 0
+
+        if "response" not in data:
+            return None
+
+        for jogo in data["response"]:
+            home_id = jogo["teams"]["home"]["id"]
+            away_id = jogo["teams"]["away"]["id"]
+
+            gols_home = jogo["goals"]["home"]
+            gols_away = jogo["goals"]["away"]
+
+            if gols_home is None or gols_away is None:
+                continue
+
+            if team_id == home_id:
+                gols_feitos += gols_home
+                gols_sofridos += gols_away
+            else:
+                gols_feitos += gols_away
+                gols_sofridos += gols_home
+
+            jogos += 1
+
+        if jogos == 0:
+            return None
+
+        stats = {
+            "media_feitos": gols_feitos / jogos,
+            "media_sofridos": gols_sofridos / jogos
+        }
+
+        team_cache[team_id] = stats
+        return stats
+
+    except:
+        return None
+
+
 def buscar_jogos():
     data_hoje = datetime.now().strftime("%Y-%m-%d")
 
@@ -31,93 +84,92 @@ def buscar_jogos():
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
-        print("📡 DEBUG API:", data_hoje)
-
         if "response" not in data:
-            return ["⚠️ Erro na API (sem 'response')"]
-
-        if not data["response"]:
-            return ["⚠️ Nenhum jogo encontrado hoje"]
+            return ["Erro na API"]
 
         oportunidades = []
 
-        for jogo in data["response"]:
-            try:
-                home = jogo["teams"]["home"]["name"]
-                away = jogo["teams"]["away"]["name"]
-                status = jogo["fixture"]["status"]["short"]
+        # 🔥 LIMITA A 10 JOGOS (controle API)
+        jogos_lista = data["response"][:10]
 
-                print(f"🔍 {home} x {away} | status: {status}")
+        for jogo in jogos_lista:
+            status = jogo["fixture"]["status"]["short"]
 
-                # ==============================
-                # 🎯 FILTRO PRÉ-JOGO
-                # ==============================
-                if status not in ["NS", "TBD"]:
-                    continue
-
-                # ==============================
-                # 🧠 LÓGICA DE ANÁLISE (BASE)
-                # ==============================
-                jogo_id = jogo["fixture"]["id"]
-
-                if jogo_id % 2 == 0:
-                    probabilidade = 70
-                    mercado = "Over 2.5 gols"
-                else:
-                    probabilidade = 65
-                    mercado = "BTTS (Ambas Marcam)"
-
-                # ==============================
-                # 🔥 FILTRO DE VALOR
-                # ==============================
-                if probabilidade >= 65:
-                    oportunidades.append(
-                        f"""🔥 ALERTA PRÉ-JOGO
-
-{home} x {away}
-✔️ Mercado: {mercado}
-📊 Probabilidade: {probabilidade}%
-🧠 Tendência ofensiva identificada
-"""
-                    )
-
-            except Exception as e:
-                print("⚠️ Erro ao processar jogo:", e)
+            if status not in ["NS", "TBD"]:
                 continue
 
-        if not oportunidades:
-            return ["🤖 Bot ativo, mas sem oportunidades no momento"]
+            home = jogo["teams"]["home"]["name"]
+            away = jogo["teams"]["away"]["name"]
 
-        return oportunidades
+            home_id = jogo["teams"]["home"]["id"]
+            away_id = jogo["teams"]["away"]["id"]
+
+            stats_home = get_team_stats(home_id)
+            stats_away = get_team_stats(away_id)
+
+            if not stats_home or not stats_away:
+                continue
+
+            media_total = (
+                stats_home["media_feitos"]
+                + stats_home["media_sofridos"]
+                + stats_away["media_feitos"]
+                + stats_away["media_sofridos"]
+            ) / 2
+
+            # 🔥 DECISÃO MAIS INTELIGENTE
+            if media_total >= 2.8:
+                mercado = "Over 2.5 gols"
+                prob = min(int(media_total * 25), 85)
+
+            elif (
+                stats_home["media_feitos"] >= 1.3
+                and stats_away["media_feitos"] >= 1.3
+            ):
+                mercado = "BTTS"
+                prob = min(int((stats_home["media_feitos"] + stats_away["media_feitos"]) * 30), 80)
+
+            else:
+                continue
+
+            if prob >= 65:
+                oportunidades.append({
+                    "msg": f"""🔥 ALERTA PROFISSIONAL
+
+{home} x {away}
+✔️ {mercado}
+📊 Probabilidade: {prob}%
+
+📈 {home}: {stats_home['media_feitos']:.2f}⚽ | {stats_home['media_sofridos']:.2f} sofridos
+📈 {away}: {stats_away['media_feitos']:.2f}⚽ | {stats_away['media_sofridos']:.2f} sofridos
+""",
+                    "prob": prob
+                })
+
+        # 🔥 ORDENA MELHORES
+        oportunidades.sort(key=lambda x: x["prob"], reverse=True)
+
+        if not oportunidades:
+            return ["🤖 Sem oportunidades com valor hoje"]
+
+        return [o["msg"] for o in oportunidades[:5]]
 
     except Exception as e:
-        return [f"❌ Erro geral: {str(e)}"]
+        return [f"Erro: {str(e)}"]
 
 
-# ==============================
-# 📲 ENVIO PARA TELEGRAM
-# ==============================
 def enviar_alerta():
     jogos = buscar_jogos()
 
-    mensagem = "📊 ANÁLISE PRÉ-JOGO\n\n"
+    mensagem = "📊 TOP OPORTUNIDADES DO DIA\n\n"
 
-    for j in jogos[:5]:
-        mensagem += f"{j}\n"
+    for j in jogos:
+        mensagem += j + "\n"
 
-    try:
-        bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        print("✅ Mensagem enviada com sucesso")
-    except Exception as e:
-        print("❌ Erro ao enviar mensagem:", e)
+    bot.send_message(chat_id=CHAT_ID, text=mensagem)
 
 
-# ==============================
-# 🔁 LOOP PRINCIPAL
-# ==============================
 if __name__ == "__main__":
-    print("🚀 Bot iniciado...")
-
     while True:
         enviar_alerta()
         time.sleep(30)
