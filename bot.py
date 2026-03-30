@@ -34,12 +34,15 @@ def get_team_stats(team_id):
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
-        gols_feitos = 0
-        gols_sofridos = 0
-        jogos = 0
+        # 🔥 DEBUG
+        print("DEBUG TEAM API:", data)
 
         if "response" not in data:
             return None
+
+        gols_feitos = 0
+        gols_sofridos = 0
+        jogos = 0
 
         for jogo in data["response"]:
             home_id = jogo["teams"]["home"]["id"]
@@ -93,8 +96,10 @@ def buscar_jogos():
         response = requests.get(url, headers=headers, timeout=10)
         data = response.json()
 
+        print("📡 DEBUG FIXTURES:", data)
+
         if "response" not in data:
-            return ["Erro na API"]
+            return [f"❌ API retornou erro: {data}"]
 
         oportunidades = []
 
@@ -161,16 +166,16 @@ def buscar_jogos():
         oportunidades.sort(key=lambda x: x["prob"], reverse=True)
 
         if not oportunidades:
-            return ["🤖 Sem oportunidades no momento"]
+            return ["🤖 Bot ativo, sem oportunidades no momento"]
 
         return [o["msg"] for o in oportunidades[:5]]
 
     except Exception as e:
-        return [f"Erro geral: {str(e)}"]
+        return [f"❌ Erro geral: {str(e)}"]
 
 
 # ==============================
-# 📲 ENVIO (ASYNC)
+# 📲 ENVIO ASYNC
 # ==============================
 async def enviar_alerta():
     jogos = buscar_jogos()
@@ -178,7 +183,12 @@ async def enviar_alerta():
     mensagem = "📊 TOP OPORTUNIDADES DO DIA\n\n"
 
     for j in jogos:
+        if "Erro" in j or "API" in j:
+            continue
         mensagem += j + "\n"
+
+    if mensagem.strip() == "📊 TOP OPORTUNIDADES DO DIA":
+        mensagem += "\n🤖 Bot ativo, sem oportunidades no momento"
 
     try:
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
@@ -188,7 +198,7 @@ async def enviar_alerta():
 
 
 # ==============================
-# 🔁 LOOP PRINCIPAL ASYNC
+# 🔁 LOOP
 # ==============================
 async def main():
     print("🚀 Bot iniciado (async)...")
