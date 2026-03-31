@@ -3,7 +3,6 @@ import os
 import asyncio
 from datetime import datetime
 from telegram import Bot
-import time
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -20,10 +19,8 @@ STATUS_VALIDOS = ["NS"]
 
 def fazer_request(url):
     headers = {"x-apisports-key": API_KEY}
-
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        return response.json()
+        return requests.get(url, headers=headers, timeout=10).json()
     except:
         return None
 
@@ -33,18 +30,14 @@ def get_odds(fixture_id):
     data = fazer_request(url)
 
     try:
-        bookmakers = data["response"][0]["bookmakers"]
-
-        for book in bookmakers:
+        for book in data["response"][0]["bookmakers"]:
             for bet in book["bets"]:
                 if bet["name"] == "Goals Over/Under":
-                    for value in bet["values"]:
-                        if value["value"] == "Over 2.5":
-                            return float(value["odd"])
+                    for v in bet["values"]:
+                        if v["value"] == "Over 2.5":
+                            return float(v["odd"])
     except:
         return None
-
-    return None
 
 
 def get_team_stats(team_id):
@@ -71,14 +64,14 @@ def get_team_stats(team_id):
         return None
 
     media = gols / jogos
-
     team_cache[team_id] = media
     return media
 
 
 def buscar_jogos():
     hoje = datetime.now().strftime("%Y-%m-%d")
-    oportunidades = []
+
+    entradas = []
 
     for league in LEAGUES:
         url = f"{BASE_URL}/fixtures?date={hoje}&league={league}"
@@ -94,49 +87,62 @@ def buscar_jogos():
             home = jogo["teams"]["home"]["name"]
             away = jogo["teams"]["away"]["name"]
 
-            home_id = jogo["teams"]["home"]["id"]
-            away_id = jogo["teams"]["away"]["id"]
-
             fixture_id = jogo["fixture"]["id"]
 
-            media_home = get_team_stats(home_id)
-            media_away = get_team_stats(away_id)
+            media_home = get_team_stats(jogo["teams"]["home"]["id"])
+            media_away = get_team_stats(jogo["teams"]["away"]["id"])
 
             if not media_home or not media_away:
                 continue
 
             media_total = (media_home + media_away) / 2
-            prob = media_total / 4  # escala simples
+            prob = media_total / 4
 
             odd = get_odds(fixture_id)
-
             if not odd:
                 continue
 
             prob_odd = 1 / odd
 
-            # 🔥 FILTRO EV+
+            # 🟢 EV+
             if prob > prob_odd:
-                oportunidades.append(f"""🔥 ENTRADA DE VALOR
+                entradas.append(f"""🟢 EV+ (TOP)
 
 {home} x {away}
-🎯 Over 2.5 gols
-
-📊 Prob: {round(prob*100)}%
-💰 Odd: {odd}
-📈 Valor: POSITIVO
+Over 2.5
+Odd: {odd}
+Prob: {round(prob*100)}%
 """)
 
-    if not oportunidades:
-        return ["📊 Sem entradas de valor agora"]
+            # 🟡 QUASE VALOR
+            elif prob > (prob_odd - 0.05):
+                entradas.append(f"""🟡 BOA OPORTUNIDADE
 
-    return oportunidades[:5]
+{home} x {away}
+Over 2.5
+Odd: {odd}
+Prob: {round(prob*100)}%
+""")
+
+            # 🔵 ALTA PROBABILIDADE
+            elif prob > 0.60:
+                entradas.append(f"""🔵 VOLUME
+
+{home} x {away}
+Over 2.5
+Prob: {round(prob*100)}%
+""")
+
+    if not entradas:
+        return ["📊 Nenhuma entrada encontrada (filtro ainda alto)"]
+
+    return entradas[:8]
 
 
 async def enviar_alerta():
     jogos = buscar_jogos()
 
-    msg = "💰 OPORTUNIDADES EV+\n\n"
+    msg = "📊 ENTRADAS DO DIA\n\n"
 
     for j in jogos:
         msg += j + "\n"
@@ -145,11 +151,11 @@ async def enviar_alerta():
 
 
 async def main():
-    print("🚀 Bot EV+ rodando...")
+    print("🚀 Bot rodando (modo operacional)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(3600)
+        await asyncio.sleep(300)
 
 
 if __name__ == "__main__":
