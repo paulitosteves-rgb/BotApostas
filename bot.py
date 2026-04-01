@@ -1,3 +1,4 @@
+
 import requests
 import asyncio
 from telegram import Bot
@@ -19,7 +20,9 @@ LEAGUES = [
 
 ultimos_jogos_enviados = set()
 
-
+# ==============================
+# BUSCAR JOGOS
+# ==============================
 def buscar_jogos():
     agora = datetime.now(UTC)
     limite = agora + timedelta(hours=12)
@@ -60,19 +63,18 @@ def buscar_jogos():
                     if not commence_time:
                         continue
 
+                    # 🔥 DATA EM UTC
                     data_jogo = datetime.fromisoformat(
                         commence_time.replace("Z", "+00:00")
                     )
 
-                    # 🔥 CONVERSÃO PARA BRASIL
-                    data_jogo = data_jogo.astimezone(
-                        ZoneInfo("America/Sao_Paulo")
-                    )
-
-                    if not (agora <= data_jogo.astimezone(UTC) <= limite):
+                    # 🔥 FILTRO (PRÓXIMAS 12H)
+                    if not (agora <= data_jogo <= limite):
                         continue
 
-                    hora_formatada = data_jogo.strftime("%H:%M")
+                    # 🔥 AJUSTE MANUAL BRASIL (-3H)
+                    data_jogo_br = data_jogo - timedelta(hours=3)
+                    hora_formatada = data_jogo_br.strftime("%H:%M")
 
                     bookmakers = jogo.get("bookmakers", [])
 
@@ -130,6 +132,9 @@ def buscar_jogos():
     return over15[:8], over25[:8], novos_jogos
 
 
+# ==============================
+# TELEGRAM
+# ==============================
 async def enviar_alerta():
     global ultimos_jogos_enviados
 
@@ -159,13 +164,19 @@ async def enviar_alerta():
     await bot.send_message(chat_id=CHAT_ID, text=msg)
 
 
+# ==============================
+# LOOP
+# ==============================
 async def main():
-    print("🚀 Bot rodando (horário corrigido + volume)...")
+    print("🚀 Bot rodando (estável e otimizado)...")
 
     while True:
         await enviar_alerta()
         await asyncio.sleep(600)
 
 
+# ==============================
+# START
+# ==============================
 if __name__ == "__main__":
     asyncio.run(main())
