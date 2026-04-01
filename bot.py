@@ -14,28 +14,12 @@ BASE_URL = "https://v3.football.api-sports.io"
 team_cache = {}
 
 LEAGUES = [39, 140, 135, 78, 61, 71]
-STATUS_VALIDOS = ["NS", "LIVE"]
 
 
 def fazer_request(url):
     headers = {"x-apisports-key": API_KEY}
     try:
         return requests.get(url, headers=headers, timeout=10).json()
-    except:
-        return None
-
-
-def get_odds(fixture_id):
-    url = f"{BASE_URL}/odds?fixture={fixture_id}"
-    data = fazer_request(url)
-
-    try:
-        for book in data["response"][0]["bookmakers"]:
-            for bet in book["bets"]:
-                if bet["name"] == "Goals Over/Under":
-                    for v in bet["values"]:
-                        if v["value"] == "Over 2.5":
-                            return float(v["odd"])
     except:
         return None
 
@@ -71,70 +55,53 @@ def get_team_stats(team_id):
 def buscar_jogos():
     hoje = datetime.now().strftime("%Y-%m-%d")
 
-    entradas = []
+    resultados = []
 
     for league in LEAGUES:
         url = f"{BASE_URL}/fixtures?date={hoje}&league={league}"
         data = fazer_request(url)
 
-        if not data:
+        if not data or not data["response"]:
             continue
 
         for jogo in data["response"]:
-            if jogo["fixture"]["status"]["short"] not in STATUS_VALIDOS:
-                continue
+            try:
+                home = jogo["teams"]["home"]["name"]
+                away = jogo["teams"]["away"]["name"]
 
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
+                home_id = jogo["teams"]["home"]["id"]
+                away_id = jogo["teams"]["away"]["id"]
 
-            fixture_id = jogo["fixture"]["id"]
+                stats_home = get_team_stats(home_id)
+                stats_away = get_team_stats(away_id)
 
-            media_home = get_team_stats(jogo["teams"]["home"]["id"])
-            media_away = get_team_stats(jogo["teams"]["away"]["id"])
+                # 🔥 CASO 1: TEM DADOS
+                if stats_home and stats_away:
+                    media_total = (stats_home + stats_away) / 2
 
-            if not media_home or not media_away:
-                continue
-
-            media_total = (media_home + media_away) / 2
-            prob = media_total / 4
-
-            odd = get_odds(fixture_id)
-
-            # 🟢 COM ODDS (EV)
-            if odd:
-                prob_odd = 1 / odd
-
-                if prob > prob_odd:
-                    entradas.append(f"""🟢 EV+
+                    resultados.append(f"""🔥 OPORTUNIDADE
 
 {home} x {away}
-Over 2.5
-Odd: {odd}
-Prob: {round(prob*100)}%
+Over 2.5 gols
+📊 Média: {round(media_total,2)}
 """)
+
+                # 🔥 CASO 2: SEM DADOS (NÃO DESCARTA MAIS)
                 else:
-                    entradas.append(f"""🟡 QUASE
+                    resultados.append(f"""📊 JOGO DO DIA
 
 {home} x {away}
-Over 2.5
-Odd: {odd}
-Prob: {round(prob*100)}%
+⚠️ Sem estatística suficiente
 """)
 
-            # 🔵 SEM ODDS (não descarta mais)
-            else:
-                if prob > 0.60:
-                    entradas.append(f"""🔵 PROBABILIDADE ALTA
+            except Exception as e:
+                print("Erro jogo:", e)
 
-{home} x {away}
-Over 2.5
-Prob: {round(prob*100)}%
-""")
+    # 🔥 GARANTIA FINAL
+    if not resultados:
+        return ["🚨 ERRO: API não retornou jogos"]
 
-    if not entradas:
-        return ["⚠️ Nenhuma entrada — revisar API ou stats"]
-
-    return entradas[:10]
+    return resultados[:10]
 
 
 async def enviar_alerta():
@@ -149,7 +116,7 @@ async def enviar_alerta():
 
 
 async def main():
-    print("🚀 Bot rodando (modo produção real)...")
+    print("🚀 Bot rodando (modo estável real)...")
 
     while True:
         await enviar_alerta()
