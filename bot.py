@@ -13,7 +13,6 @@ API_KEY = "f941db0959abcf753ad321a81aa18a10"
 
 bot = Bot(token=TOKEN)
 
-# 🔥 Liga confiável (Premier League)
 BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer_epl/odds"
 
 
@@ -21,8 +20,6 @@ BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer_epl/odds"
 # BUSCAR JOGOS + ODDS
 # ==============================
 def buscar_jogos():
-    print("🔍 DEBUG API KEY:", API_KEY)
-
     params = {
         "apiKey": API_KEY,
         "regions": "eu",
@@ -33,23 +30,30 @@ def buscar_jogos():
     try:
         response = requests.get(BASE_URL, params=params, timeout=10)
 
-        print("📡 STATUS:", response.status_code)
-        print("📡 RESPOSTA:", response.text)
+        print("STATUS:", response.status_code)
 
         data = response.json()
 
-        # 🚨 VALIDAÇÃO
         if not isinstance(data, list):
-            return [f"❌ Erro API: {data}"]
+            return [f"Erro API: {data}"]
 
         entradas = []
+        jogos_processados = set()  # 🔥 evita repetição
 
         for jogo in data:
             try:
                 home = jogo.get("home_team")
                 away = jogo.get("away_team")
 
+                jogo_id = f"{home} x {away}"
+
+                # 🔥 evita duplicado
+                if jogo_id in jogos_processados:
+                    continue
+
                 bookmakers = jogo.get("bookmakers", [])
+
+                odd_encontrada = None
 
                 for book in bookmakers:
                     for market in book.get("markets", []):
@@ -60,34 +64,42 @@ def buscar_jogos():
                                     outcome.get("name") == "Over"
                                     and outcome.get("point") == 2.5
                                 ):
-                                    odd = outcome.get("price")
+                                    odd_encontrada = outcome.get("price")
+                                    break
 
-                                    if not odd:
-                                        continue
+                        if odd_encontrada:
+                            break
+                    if odd_encontrada:
+                        break
 
-                                    # 🎯 FILTRO AJUSTADO
-                                    if 1.50 <= odd <= 2.80:
+                if not odd_encontrada:
+                    continue
 
-                                        if odd >= 2.10:
-                                            nivel = "🟢 EV+ FORTE"
-                                        elif odd >= 1.80:
-                                            nivel = "🟡 BOA"
-                                        else:
-                                            nivel = "🔵 SEGURA"
+                # 🎯 FILTRO MELHORADO
+                if 1.60 <= odd_encontrada <= 2.50:
 
-                                        entradas.append(f"""{nivel}
+                    if odd_encontrada >= 2.10:
+                        nivel = "🟢 EV+ FORTE"
+                    elif odd_encontrada >= 1.85:
+                        nivel = "🟡 BOA"
+                    else:
+                        nivel = "🔵 SEGURA"
+
+                    entradas.append(f"""{nivel}
 
 {home} x {away}
 🎯 Over 2.5 gols
-💰 Odd: {odd}
+💰 Odd: {odd_encontrada}
 """)
+
+                    jogos_processados.add(jogo_id)
 
             except Exception as e:
                 print("Erro jogo:", e)
                 continue
 
         if not entradas:
-            return ["📊 Sem oportunidades no momento"]
+            return ["📊 Sem oportunidades relevantes agora"]
 
         return entradas[:10]
 
@@ -113,11 +125,11 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo funcional)...")
+    print("🚀 Bot rodando (versão limpa)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(600)  # 10 minutos
+        await asyncio.sleep(600)
 
 
 # ==============================
