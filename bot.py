@@ -14,7 +14,7 @@ BASE_URL = "https://v3.football.api-sports.io"
 team_cache = {}
 
 LEAGUES = [39, 140, 135, 78, 61, 71]
-STATUS_VALIDOS = ["NS"]
+STATUS_VALIDOS = ["NS", "LIVE"]
 
 
 def fazer_request(url):
@@ -99,14 +99,21 @@ def buscar_jogos():
             prob = media_total / 4
 
             odd = get_odds(fixture_id)
-            if not odd:
-                continue
 
-            prob_odd = 1 / odd
+            # 🟢 COM ODDS (EV)
+            if odd:
+                prob_odd = 1 / odd
 
-            # 🟢 EV+
-            if prob > prob_odd:
-                entradas.append(f"""🟢 EV+ (TOP)
+                if prob > prob_odd:
+                    entradas.append(f"""🟢 EV+
+
+{home} x {away}
+Over 2.5
+Odd: {odd}
+Prob: {round(prob*100)}%
+""")
+                else:
+                    entradas.append(f"""🟡 QUASE
 
 {home} x {away}
 Over 2.5
@@ -114,19 +121,10 @@ Odd: {odd}
 Prob: {round(prob*100)}%
 """)
 
-            # 🟡 QUASE VALOR
-            elif prob > (prob_odd - 0.05):
-                entradas.append(f"""🟡 BOA OPORTUNIDADE
-
-{home} x {away}
-Over 2.5
-Odd: {odd}
-Prob: {round(prob*100)}%
-""")
-
-            # 🔵 ALTA PROBABILIDADE
-            elif prob > 0.60:
-                entradas.append(f"""🔵 VOLUME
+            # 🔵 SEM ODDS (não descarta mais)
+            else:
+                if prob > 0.60:
+                    entradas.append(f"""🔵 PROBABILIDADE ALTA
 
 {home} x {away}
 Over 2.5
@@ -134,9 +132,9 @@ Prob: {round(prob*100)}%
 """)
 
     if not entradas:
-        return ["📊 Nenhuma entrada encontrada (filtro ainda alto)"]
+        return ["⚠️ Nenhuma entrada — revisar API ou stats"]
 
-    return entradas[:8]
+    return entradas[:10]
 
 
 async def enviar_alerta():
@@ -151,7 +149,7 @@ async def enviar_alerta():
 
 
 async def main():
-    print("🚀 Bot rodando (modo operacional)...")
+    print("🚀 Bot rodando (modo produção real)...")
 
     while True:
         await enviar_alerta()
