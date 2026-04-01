@@ -3,9 +3,9 @@ import asyncio
 from telegram import Bot
 from datetime import datetime, UTC, timedelta
 
-TOKEN = "SEU_TOKEN"
-CHAT_ID = "SEU_CHAT_ID"
-API_KEY = "SUA_API_KEY"
+TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
+CHAT_ID = "7729625060"
+API_KEY = "f941db0959abcf753ad321a81aa18a10"
 
 bot = Bot(token=TOKEN)
 
