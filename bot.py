@@ -1,25 +1,29 @@
 import requests
 import asyncio
 from telegram import Bot
+from datetime import datetime
 
 # ==============================
 # CONFIG
 # ==============================
-TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
-CHAT_ID = "7729625060"
-
-# 🔥 API KEY FIXA (resolve 100% problema do Railway)
-API_KEY = "f941db0959abcf753ad321a81aa18a10"
+TOKEN = "SEU_TOKEN_TELEGRAM_AQUI"
+CHAT_ID = "SEU_CHAT_ID_AQUI"
+API_KEY = "SUA_API_KEY_AQUI"
 
 bot = Bot(token=TOKEN)
 
 BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer_epl/odds"
 
+# 🔥 CONTROLE DE DUPLICAÇÃO
+ultimos_jogos_enviados = set()
+
 
 # ==============================
-# BUSCAR JOGOS + ODDS
+# BUSCAR JOGOS
 # ==============================
 def buscar_jogos():
+    global ultimos_jogos_enviados
+
     params = {
         "apiKey": API_KEY,
         "regions": "eu",
@@ -29,16 +33,15 @@ def buscar_jogos():
 
     try:
         response = requests.get(BASE_URL, params=params, timeout=10)
-
-        print("STATUS:", response.status_code)
-
         data = response.json()
 
         if not isinstance(data, list):
-            return [f"Erro API: {data}"]
+            return [], ["Erro API"]
 
         entradas = []
-        jogos_processados = set()  # 🔥 evita repetição
+        novos_jogos = set()
+
+        hoje = datetime.utcnow().date()
 
         for jogo in data:
             try:
@@ -47,40 +50,37 @@ def buscar_jogos():
 
                 jogo_id = f"{home} x {away}"
 
-                # 🔥 evita duplicado
-                if jogo_id in jogos_processados:
-                    continue
+                # 🔥 FILTRO DE DATA (SÓ HOJE)
+                commence_time = jogo.get("commence_time")
+                if commence_time:
+                    data_jogo = datetime.fromisoformat(commence_time.replace("Z", "")).date()
+                    if data_jogo != hoje:
+                        continue
 
                 bookmakers = jogo.get("bookmakers", [])
 
-                odd_encontrada = None
+                odd = None
 
                 for book in bookmakers:
                     for market in book.get("markets", []):
                         if market.get("key") == "totals":
                             for outcome in market.get("outcomes", []):
-
-                                if (
-                                    outcome.get("name") == "Over"
-                                    and outcome.get("point") == 2.5
-                                ):
-                                    odd_encontrada = outcome.get("price")
+                                if outcome.get("name") == "Over" and outcome.get("point") == 2.5:
+                                    odd = outcome.get("price")
                                     break
-
-                        if odd_encontrada:
+                        if odd:
                             break
-                    if odd_encontrada:
+                    if odd:
                         break
 
-                if not odd_encontrada:
+                if not odd:
                     continue
 
-                # 🎯 FILTRO MELHORADO
-                if 1.60 <= odd_encontrada <= 2.50:
+                if 1.60 <= odd <= 2.50:
 
-                    if odd_encontrada >= 2.10:
+                    if odd >= 2.10:
                         nivel = "🟢 EV+ FORTE"
-                    elif odd_encontrada >= 1.85:
+                    elif odd >= 1.85:
                         nivel = "🟡 BOA"
                     else:
                         nivel = "🔵 SEGURA"
@@ -89,34 +89,42 @@ def buscar_jogos():
 
 {home} x {away}
 🎯 Over 2.5 gols
-💰 Odd: {odd_encontrada}
+💰 Odd: {odd}
 """)
 
-                    jogos_processados.add(jogo_id)
+                    novos_jogos.add(jogo_id)
 
             except Exception as e:
                 print("Erro jogo:", e)
-                continue
 
-        if not entradas:
-            return ["📊 Sem oportunidades relevantes agora"]
-
-        return entradas[:10]
+        return entradas[:10], novos_jogos
 
     except Exception as e:
-        return [f"Erro geral: {str(e)}"]
+        return [], [f"Erro: {str(e)}"]
 
 
 # ==============================
 # TELEGRAM
 # ==============================
 async def enviar_alerta():
-    jogos = buscar_jogos()
+    global ultimos_jogos_enviados
 
-    msg = "📊 OPORTUNIDADES DO DIA\n\n"
+    entradas, novos_jogos = buscar_jogos()
 
-    for j in jogos:
-        msg += j + "\n"
+    # 🔥 NÃO ENVIA SE FOR IGUAL AO ANTERIOR
+    if novos_jogos == ultimos_jogos_enviados:
+        print("🔁 Nenhuma mudança, não enviando alerta")
+        return
+
+    ultimos_jogos_enviados = novos_jogos
+
+    if not entradas:
+        return
+
+    msg = "📊 OPORTUNIDADES DO DIA (FILTRADAS)\n\n"
+
+    for e in entradas:
+        msg += e + "\n"
 
     await bot.send_message(chat_id=CHAT_ID, text=msg)
 
@@ -125,7 +133,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (versão limpa)...")
+    print("🚀 Bot rodando (modo profissional)...")
 
     while True:
         await enviar_alerta()
