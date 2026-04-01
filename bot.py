@@ -3,10 +3,12 @@ import requests
 import asyncio
 from telegram import Bot
 from datetime import datetime, UTC, timedelta
+import time
 
 TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "7729625060"
-API_KEY = "f941db0959abcf753ad321a81aa18a10"
+ODDS_API_KEY = "f941db0959abcf753ad321a81aa18a10"
+STATS_API_KEY = "SUA_API_KEY_STATS"
 
 bot = Bot(token=TOKEN)
 
@@ -15,20 +17,83 @@ LEAGUES = [
     "soccer_spain_la_liga",
     "soccer_italy_serie_a",
     "soccer_germany_bundesliga",
-    "soccer_brazil_campeonato"
+    "soccer_brazil_campeonato",
+    "soccer_brazil_serie_b"
 ]
 
 ultimos_jogos_enviados = set()
+cache_times = {}  # 🔥 cache de probabilidade
+
 
 # ==============================
-# BUSCAR JOGOS
+# 🔥 SOFASCORE STATS
+# ==============================
+def buscar_stats_sofascore(time_nome):
+
+    # 🔥 CACHE (evita excesso de requisições)
+    if time_nome in cache_times:
+        return cache_times[time_nome]
+
+    try:
+        # 🔍 Buscar ID do time
+        url_search = f"https://api.sofascore.com/api/v1/search/all?q={time_nome}"
+        res = requests.get(url_search, timeout=10)
+        data = res.json()
+
+        time_id = None
+
+        for item in data.get("results", []):
+            nome_api = item.get("entity", {}).get("name", "").lower()
+
+            if time_nome.lower() in nome_api:
+                time_id = item["entity"]["id"]
+                break
+
+        if not time_id:
+            cache_times[time_nome] = 0
+            return 0
+
+        # 📊 Últimos 5 jogos
+        url_games = f"https://api.sofascore.com/api/v1/team/{time_id}/events/last/5"
+        res = requests.get(url_games, timeout=10)
+        jogos = res.json().get("events", [])
+
+        if not jogos:
+            cache_times[time_nome] = 0
+            return 0
+
+        over = 0
+
+        for j in jogos:
+            home = j["homeScore"]["current"]
+            away = j["awayScore"]["current"]
+
+            if home is not None and away is not None:
+                if (home + away) >= 2:
+                    over += 1
+
+        prob = (over / len(jogos)) * 100
+
+        cache_times[time_nome] = prob
+
+        time.sleep(1)  # 🔥 evitar bloqueio
+
+        return prob
+
+    except Exception as e:
+        print("Erro SofaScore:", e)
+        cache_times[time_nome] = 0
+        return 0
+
+
+# ==============================
+# BUSCAR JOGOS + INTELIGÊNCIA
 # ==============================
 def buscar_jogos():
     agora = datetime.now(UTC)
     limite = agora + timedelta(hours=12)
 
-    over15 = []
-    over25 = []
+    entradas = []
     novos_jogos = set()
 
     for league in LEAGUES:
@@ -36,7 +101,7 @@ def buscar_jogos():
         url = f"https://api.the-odds-api.com/v4/sports/{league}/odds"
 
         params = {
-            "apiKey": API_KEY,
+            "apiKey": ODDS_API_KEY,
             "regions": "eu",
             "markets": "totals",
             "oddsFormat": "decimal"
@@ -63,65 +128,35 @@ def buscar_jogos():
                     if not commence_time:
                         continue
 
-                    # 🔥 DATA EM UTC
                     data_jogo = datetime.fromisoformat(
                         commence_time.replace("Z", "+00:00")
                     )
 
-                    # 🔥 FILTRO (PRÓXIMAS 12H)
                     if not (agora <= data_jogo <= limite):
                         continue
 
-                    # 🔥 AJUSTE MANUAL BRASIL (-3H)
-                    data_jogo_br = data_jogo - timedelta(hours=3)
-                    hora_formatada = data_jogo_br.strftime("%H:%M")
+                    hora = (data_jogo - timedelta(hours=3)).strftime("%H:%M")
 
-                    bookmakers = jogo.get("bookmakers", [])
+                    # 🔥 PROBABILIDADE REAL
+                    prob_home = buscar_stats_sofascore(home)
+                    prob_away = buscar_stats_sofascore(away)
 
-                    odd15 = None
-                    odd25 = None
+                    prob_final = (prob_home + prob_away) / 2
 
-                    for book in bookmakers:
-                        for market in book.get("markets", []):
-                            if market.get("key") == "totals":
-                                for outcome in market.get("outcomes", []):
+                    # 🎯 FILTRO
+                    if prob_final < 70:
+                        continue
 
-                                    if outcome.get("name") == "Over":
-                                        if outcome.get("point") == 1.5:
-                                            odd15 = outcome.get("price")
-                                        elif outcome.get("point") == 2.5:
-                                            odd25 = outcome.get("price")
-
-                    # 🔵 OVER 1.5 (MAIS FLEXÍVEL)
-                    if odd15 and 1.15 <= odd15 <= 1.60:
-                        over15.append(f"""🔵 SEGURA
+                    entradas.append(f"""🧠 ENTRADA INTELIGENTE
 
 {home} x {away}
-🕒 {hora_formatada}
-🎯 Over 1.5
-💰 {odd15}
-📊 Stake: 2%
+🕒 {hora}
+
+📊 Probabilidade: {prob_final:.0f}%
+🎯 Over 1.5 gols
 """)
-                        novos_jogos.add(jogo_id)
 
-                    # 🟢 OVER 2.5
-                    if odd25 and 1.65 <= odd25 <= 3.00:
-
-                        if odd25 >= 2.20:
-                            nivel = "🟢 EV+ FORTE (1%)"
-                        elif odd25 >= 1.90:
-                            nivel = "🟡 BOA (1.5%)"
-                        else:
-                            nivel = "🔵 MODERADA (2%)"
-
-                        over25.append(f"""{nivel}
-
-{home} x {away}
-🕒 {hora_formatada}
-🎯 Over 2.5
-💰 {odd25}
-""")
-                        novos_jogos.add(jogo_id)
+                    novos_jogos.add(jogo_id)
 
                 except Exception as e:
                     print("Erro jogo:", e)
@@ -129,7 +164,7 @@ def buscar_jogos():
         except Exception as e:
             print("Erro liga:", league, e)
 
-    return over15[:8], over25[:8], novos_jogos
+    return entradas[:10], novos_jogos
 
 
 # ==============================
@@ -138,7 +173,7 @@ def buscar_jogos():
 async def enviar_alerta():
     global ultimos_jogos_enviados
 
-    over15, over25, novos_jogos = buscar_jogos()
+    entradas, novos_jogos = buscar_jogos()
 
     if novos_jogos == ultimos_jogos_enviados:
         print("🔁 Sem novidades")
@@ -146,20 +181,14 @@ async def enviar_alerta():
 
     ultimos_jogos_enviados = novos_jogos
 
-    msg = "💰 OPORTUNIDADES (PRÓXIMAS HORAS)\n\n"
+    if not entradas:
+        print("📊 Nenhuma entrada com probabilidade suficiente")
+        return
 
-    if over15:
-        msg += "🔵 SEGURAS (Over 1.5)\n\n"
-        for j in over15:
-            msg += j + "\n"
+    msg = "🧠 ENTRADAS COM PROBABILIDADE ALTA\n\n"
 
-    if over25:
-        msg += "\n🟢 VALOR (Over 2.5)\n\n"
-        for j in over25:
-            msg += j + "\n"
-
-    if not over15 and not over25:
-        msg += "📊 Nenhuma entrada nas próximas horas"
+    for e in entradas:
+        msg += e + "\n"
 
     await bot.send_message(chat_id=CHAT_ID, text=msg)
 
@@ -168,11 +197,11 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (estável e otimizado)...")
+    print("🚀 Bot rodando (modo inteligência + SofaScore)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(600)
+        await asyncio.sleep(900)  # 15 min
 
 
 # ==============================
