@@ -1,23 +1,19 @@
 import requests
-import os
 import asyncio
 from telegram import Bot
 
 # ==============================
 # CONFIG
 # ==============================
-TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
+CHAT_ID = "7729625060"
 
-# 🔥 TENTA PEGAR DO RAILWAY
-API_KEY = os.getenv("ODDS_API_KEY")
-
-# 🔥 FALLBACK (SE DER PROBLEMA, TESTAR DIRETO)
-# API_KEY = "COLE_SUA_API_KEY_AQUI"
+# 🔥 API KEY FIXA (resolve 100% problema do Railway)
+API_KEY = "f941db0959abcf753ad321a81aa18a10"
 
 bot = Bot(token=TOKEN)
 
-# 🔥 ENDPOINT CORRETO (liga real)
+# 🔥 Liga confiável (Premier League)
 BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer_epl/odds"
 
 
@@ -69,7 +65,7 @@ def buscar_jogos():
                                     if not odd:
                                         continue
 
-                                    # 🎯 FILTRO AJUSTADO (mais permissivo)
+                                    # 🎯 FILTRO AJUSTADO
                                     if 1.50 <= odd <= 2.80:
 
                                         if odd >= 2.10:
@@ -117,7 +113,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo definitivo)...")
+    print("🚀 Bot rodando (modo funcional)...")
 
     while True:
         await enviar_alerta()
