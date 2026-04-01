@@ -22,7 +22,7 @@ ultimos_jogos_enviados = set()
 
 def buscar_jogos():
     agora = datetime.now(UTC)
-    limite = agora + timedelta(hours=12)  # 🔥 próximos jogos (12h)
+    limite = agora + timedelta(hours=12)
 
     over15 = []
     over25 = []
@@ -56,7 +56,6 @@ def buscar_jogos():
                     if jogo_id in novos_jogos:
                         continue
 
-                    # 🔥 FILTRO DE TEMPO (PRÓXIMAS 12 HORAS)
                     commence_time = jogo.get("commence_time")
                     if not commence_time:
                         continue
@@ -65,10 +64,14 @@ def buscar_jogos():
                         commence_time.replace("Z", "+00:00")
                     )
 
-                    if not (agora <= data_jogo <= limite):
+                    # 🔥 CONVERSÃO PARA BRASIL
+                    data_jogo = data_jogo.astimezone(
+                        ZoneInfo("America/Sao_Paulo")
+                    )
+
+                    if not (agora <= data_jogo.astimezone(UTC) <= limite):
                         continue
 
-                    # 🕒 horário formatado
                     hora_formatada = data_jogo.strftime("%H:%M")
 
                     bookmakers = jogo.get("bookmakers", [])
@@ -87,8 +90,8 @@ def buscar_jogos():
                                         elif outcome.get("point") == 2.5:
                                             odd25 = outcome.get("price")
 
-                    # 🔵 OVER 1.5 (MAIS VOLUME)
-                    if odd15 and 1.20 <= odd15 <= 1.45:
+                    # 🔵 OVER 1.5 (MAIS FLEXÍVEL)
+                    if odd15 and 1.15 <= odd15 <= 1.60:
                         over15.append(f"""🔵 SEGURA
 
 {home} x {away}
@@ -99,7 +102,7 @@ def buscar_jogos():
 """)
                         novos_jogos.add(jogo_id)
 
-                    # 🟢 OVER 2.5 (VALOR)
+                    # 🟢 OVER 2.5
                     if odd25 and 1.65 <= odd25 <= 3.00:
 
                         if odd25 >= 2.20:
@@ -157,7 +160,7 @@ async def enviar_alerta():
 
 
 async def main():
-    print("🚀 Bot rodando (modo otimizado + horário)...")
+    print("🚀 Bot rodando (horário corrigido + volume)...")
 
     while True:
         await enviar_alerta()
