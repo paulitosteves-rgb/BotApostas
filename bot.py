@@ -1,7 +1,7 @@
 import requests
 import asyncio
 from telegram import Bot
-from datetime import datetime
+from datetime import datetime, UTC, timedelta
 
 TOKEN = "SEU_TOKEN"
 CHAT_ID = "SEU_CHAT_ID"
@@ -9,7 +9,6 @@ API_KEY = "SUA_API_KEY"
 
 bot = Bot(token=TOKEN)
 
-# 🔥 MULTI LIGAS
 LEAGUES = [
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -22,7 +21,8 @@ ultimos_jogos_enviados = set()
 
 
 def buscar_jogos():
-    hoje = datetime.utcnow().date()
+    agora = datetime.now(UTC)
+    limite = agora + timedelta(hours=12)  # 🔥 próximos jogos (12h)
 
     over15 = []
     over25 = []
@@ -53,16 +53,23 @@ def buscar_jogos():
 
                     jogo_id = f"{home} x {away}"
 
-                    # 🔥 evita duplicação entre ligas
                     if jogo_id in novos_jogos:
                         continue
 
-                    # filtro data
+                    # 🔥 FILTRO DE TEMPO (PRÓXIMAS 12 HORAS)
                     commence_time = jogo.get("commence_time")
-                    if commence_time:
-                        data_jogo = datetime.fromisoformat(commence_time.replace("Z", "")).date()
-                        if data_jogo != hoje:
-                            continue
+                    if not commence_time:
+                        continue
+
+                    data_jogo = datetime.fromisoformat(
+                        commence_time.replace("Z", "+00:00")
+                    )
+
+                    if not (agora <= data_jogo <= limite):
+                        continue
+
+                    # 🕒 horário formatado
+                    hora_formatada = data_jogo.strftime("%H:%M")
 
                     bookmakers = jogo.get("bookmakers", [])
 
@@ -80,19 +87,20 @@ def buscar_jogos():
                                         elif outcome.get("point") == 2.5:
                                             odd25 = outcome.get("price")
 
-                    # 🔵 OVER 1.5 (mais volume)
-                    if odd15 and 1.20 <= odd15 <= 1.40:
+                    # 🔵 OVER 1.5 (MAIS VOLUME)
+                    if odd15 and 1.20 <= odd15 <= 1.45:
                         over15.append(f"""🔵 SEGURA
 
 {home} x {away}
+🕒 {hora_formatada}
 🎯 Over 1.5
 💰 {odd15}
 📊 Stake: 2%
 """)
                         novos_jogos.add(jogo_id)
 
-                    # 🟢 OVER 2.5
-                    if odd25 and 1.70 <= odd25 <= 2.80:
+                    # 🟢 OVER 2.5 (VALOR)
+                    if odd25 and 1.65 <= odd25 <= 3.00:
 
                         if odd25 >= 2.20:
                             nivel = "🟢 EV+ FORTE (1%)"
@@ -104,6 +112,7 @@ def buscar_jogos():
                         over25.append(f"""{nivel}
 
 {home} x {away}
+🕒 {hora_formatada}
 🎯 Over 2.5
 💰 {odd25}
 """)
@@ -115,7 +124,7 @@ def buscar_jogos():
         except Exception as e:
             print("Erro liga:", league, e)
 
-    return over15[:7], over25[:7], novos_jogos
+    return over15[:8], over25[:8], novos_jogos
 
 
 async def enviar_alerta():
@@ -129,7 +138,7 @@ async def enviar_alerta():
 
     ultimos_jogos_enviados = novos_jogos
 
-    msg = "💰 OPORTUNIDADES MULTI-LIGAS\n\n"
+    msg = "💰 OPORTUNIDADES (PRÓXIMAS HORAS)\n\n"
 
     if over15:
         msg += "🔵 SEGURAS (Over 1.5)\n\n"
@@ -142,13 +151,13 @@ async def enviar_alerta():
             msg += j + "\n"
 
     if not over15 and not over25:
-        msg += "📊 Sem oportunidades"
+        msg += "📊 Nenhuma entrada nas próximas horas"
 
     await bot.send_message(chat_id=CHAT_ID, text=msg)
 
 
 async def main():
-    print("🚀 Bot rodando (multi-ligas ativado)...")
+    print("🚀 Bot rodando (modo otimizado + horário)...")
 
     while True:
         await enviar_alerta()
