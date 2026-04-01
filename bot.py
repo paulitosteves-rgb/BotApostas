@@ -11,103 +11,44 @@ API_KEY = os.getenv("API_KEY")
 bot = Bot(token=TOKEN)
 
 BASE_URL = "https://v3.football.api-sports.io"
-team_cache = {}
-
-LEAGUES = [39, 140, 135, 78, 61, 71]
-
-
-def fazer_request(url):
-    headers = {"x-apisports-key": API_KEY}
-    try:
-        return requests.get(url, headers=headers, timeout=10).json()
-    except:
-        return None
-
-
-def get_team_stats(team_id):
-    if team_id in team_cache:
-        return team_cache[team_id]
-
-    url = f"{BASE_URL}/fixtures?team={team_id}&last=5"
-    data = fazer_request(url)
-
-    if not data or not data["response"]:
-        return None
-
-    gols = 0
-    jogos = 0
-
-    for j in data["response"]:
-        if j["goals"]["home"] is None:
-            continue
-
-        gols += j["goals"]["home"] + j["goals"]["away"]
-        jogos += 1
-
-    if jogos == 0:
-        return None
-
-    media = gols / jogos
-    team_cache[team_id] = media
-    return media
 
 
 def buscar_jogos():
     hoje = datetime.now().strftime("%Y-%m-%d")
 
-    resultados = []
+    url = f"{BASE_URL}/fixtures?date={hoje}"
 
-    for league in LEAGUES:
-        url = f"{BASE_URL}/fixtures?date={hoje}&league={league}"
-        data = fazer_request(url)
+    headers = {"x-apisports-key": API_KEY}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
 
         if not data or not data["response"]:
-            continue
+            return ["⚠️ API sem jogos no momento"]
 
-        for jogo in data["response"]:
-            try:
-                home = jogo["teams"]["home"]["name"]
-                away = jogo["teams"]["away"]["name"]
+        jogos = []
 
-                home_id = jogo["teams"]["home"]["id"]
-                away_id = jogo["teams"]["away"]["id"]
+        for jogo in data["response"][:10]:
+            home = jogo["teams"]["home"]["name"]
+            away = jogo["teams"]["away"]["name"]
 
-                stats_home = get_team_stats(home_id)
-                stats_away = get_team_stats(away_id)
+            league = jogo["league"]["name"]
 
-                # 🔥 CASO 1: TEM DADOS
-                if stats_home and stats_away:
-                    media_total = (stats_home + stats_away) / 2
-
-                    resultados.append(f"""🔥 OPORTUNIDADE
-
-{home} x {away}
-Over 2.5 gols
-📊 Média: {round(media_total,2)}
+            jogos.append(f"""⚽ {home} x {away}
+🏆 {league}
 """)
 
-                # 🔥 CASO 2: SEM DADOS (NÃO DESCARTA MAIS)
-                else:
-                    resultados.append(f"""📊 JOGO DO DIA
+        return jogos
 
-{home} x {away}
-⚠️ Sem estatística suficiente
-""")
-
-            except Exception as e:
-                print("Erro jogo:", e)
-
-    # 🔥 GARANTIA FINAL
-    if not resultados:
-        return ["🚨 ERRO: API não retornou jogos"]
-
-    return resultados[:10]
+    except Exception as e:
+        return [f"Erro API: {str(e)}"]
 
 
 async def enviar_alerta():
     jogos = buscar_jogos()
 
-    msg = "📊 ENTRADAS DO DIA\n\n"
+    msg = "📊 JOGOS DO DIA\n\n"
 
     for j in jogos:
         msg += j + "\n"
@@ -116,7 +57,7 @@ async def enviar_alerta():
 
 
 async def main():
-    print("🚀 Bot rodando (modo estável real)...")
+    print("🚀 Bot rodando (modo leve - sem limite)...")
 
     while True:
         await enviar_alerta()
