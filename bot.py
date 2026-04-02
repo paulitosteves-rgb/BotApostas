@@ -22,20 +22,17 @@ LEAGUES = [
 ]
 
 ultimos_jogos_enviados = set()
-cache_times = {}  # 🔥 cache de probabilidade
-
+cache_times = {}
 
 # ==============================
 # 🔥 SOFASCORE STATS
 # ==============================
 def buscar_stats_sofascore(time_nome):
 
-    # 🔥 CACHE (evita excesso de requisições)
     if time_nome in cache_times:
         return cache_times[time_nome]
 
     try:
-        # 🔍 Buscar ID do time
         url_search = f"https://api.sofascore.com/api/v1/search/all?q={time_nome}"
         res = requests.get(url_search, timeout=10)
         data = res.json()
@@ -45,7 +42,8 @@ def buscar_stats_sofascore(time_nome):
         for item in data.get("results", []):
             nome_api = item.get("entity", {}).get("name", "").lower()
 
-            if time_nome.lower() in nome_api:
+            # 🔥 matching melhorado
+            if any(p in nome_api for p in time_nome.lower().split()):
                 time_id = item["entity"]["id"]
                 break
 
@@ -53,7 +51,6 @@ def buscar_stats_sofascore(time_nome):
             cache_times[time_nome] = 0
             return 0
 
-        # 📊 Últimos 5 jogos
         url_games = f"https://api.sofascore.com/api/v1/team/{time_id}/events/last/5"
         res = requests.get(url_games, timeout=10)
         jogos = res.json().get("events", [])
@@ -76,7 +73,7 @@ def buscar_stats_sofascore(time_nome):
 
         cache_times[time_nome] = prob
 
-        time.sleep(1)  # 🔥 evitar bloqueio
+        time.sleep(1)  # evitar bloqueio
 
         return prob
 
@@ -87,7 +84,7 @@ def buscar_stats_sofascore(time_nome):
 
 
 # ==============================
-# BUSCAR JOGOS + INTELIGÊNCIA
+# BUSCAR JOGOS
 # ==============================
 def buscar_jogos():
     agora = datetime.now(UTC)
@@ -137,14 +134,23 @@ def buscar_jogos():
 
                     hora = (data_jogo - timedelta(hours=3)).strftime("%H:%M")
 
-                    # 🔥 PROBABILIDADE REAL
+                    # ==============================
+                    # 🔥 PROBABILIDADE
+                    # ==============================
                     prob_home = buscar_stats_sofascore(home)
                     prob_away = buscar_stats_sofascore(away)
 
                     prob_final = (prob_home + prob_away) / 2
 
-                    # 🎯 FILTRO
-                    if prob_final < 70:
+                    print(f"{home} vs {away} | {prob_home:.0f}% x {prob_away:.0f}% = {prob_final:.0f}%")
+
+                    # 🔥 fallback se stats falhar
+                    if prob_home == 0 or prob_away == 0:
+                        print(f"⚠️ Ignorado sem stats: {home} x {away}")
+                        continue
+
+                    # 🔥 filtro ajustado
+                    if prob_final < 65:
                         continue
 
                     entradas.append(f"""🧠 ENTRADA INTELIGENTE
@@ -182,7 +188,7 @@ async def enviar_alerta():
     ultimos_jogos_enviados = novos_jogos
 
     if not entradas:
-        print("📊 Nenhuma entrada com probabilidade suficiente")
+        print("📊 Nenhuma entrada com valor suficiente")
         return
 
     msg = "🧠 ENTRADAS COM PROBABILIDADE ALTA\n\n"
@@ -197,11 +203,11 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo inteligência + SofaScore)...")
+    print("🚀 Bot rodando (modo inteligente corrigido)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(900)  # 15 min
+        await asyncio.sleep(900)
 
 
 # ==============================
