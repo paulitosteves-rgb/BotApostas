@@ -98,33 +98,43 @@ def analisar():
 
     for jogo_id, home, away, hora in jogos:
 
-        # 🔁 evitar repetição
+        # evitar repetição
         if jogo_id in jogos_enviados:
             continue
 
         home_grande = any(t in home for t in times_grandes)
         away_grande = any(t in away for t in times_grandes)
 
-        # 🔵 FORTE
+        # 🔵 OVER 2.5 (FORTE)
         if home_grande and away_grande:
-            tipo = "🔵 OVER 2.5 (FORTE)"
-            desc = "📊 Duas equipes ofensivas"
-
-        # 🟢 BOM
-        elif home_grande or away_grande:
-            tipo = "🟢 OVER 1.5 (BOM)"
-            desc = "📊 Um time forte em campo"
-
-        else:
-            continue
-
-        msg = f"""{tipo}
+            msg = f"""🔥 OVER 2.5 (FORTE)
 
 {home} x {away}
 🕒 {hora}
 
-{desc}
+📊 Duas equipes com perfil ofensivo
+📈 Forte tendência de gols
+
+💰 Sugestão: entrada simples
+⚠️ Gestão: até 2% da banca
 """
+
+        # 🟢 OVER 1.5 (BOM)
+        elif home_grande or away_grande:
+            msg = f"""🟢 OVER 1.5 (BOM)
+
+{home} x {away}
+🕒 {hora}
+
+📊 Cenário propício para pelo menos 2 gols
+📈 Tendência ofensiva consistente
+
+💰 Sugestão: múltiplas ou entrada conservadora
+⚠️ Gestão: 1 a 2% da banca
+"""
+
+        else:
+            continue
 
         entradas.append((jogo_id, msg))
 
@@ -148,11 +158,11 @@ while True:
 
             print(f"📤 Enviando: {jogo_id}")
 
-            enviar(f"🚨 NOVA ENTRADA\n\n{msg}")
+            enviar(f"🚨 ENTRADA LIBERADA\n\n{msg}")
 
             jogos_enviados.add(jogo_id)
 
-            time.sleep(2)  # anti flood
+            time.sleep(2)
 
     except Exception as e:
         print("💥 ERRO LOOP:", e)
