@@ -9,6 +9,11 @@ TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "7729625060"
 
 # ==============================
+# CONTROLE DE ENVIO
+# ==============================
+jogos_enviados = set()
+
+# ==============================
 # TELEGRAM
 # ==============================
 def enviar(msg):
@@ -19,24 +24,23 @@ def enviar(msg):
         print("Erro Telegram:", e)
 
 # ==============================
-# BUSCAR JOGOS (ESPN REAL)
+# BUSCAR JOGOS (ESPN)
 # ==============================
 def buscar_jogos():
     print("🔍 Buscando jogos ESPN...")
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+        "User-Agent": "Mozilla/5.0"
     }
 
     try:
         url = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
-
         res = requests.get(url, headers=headers, timeout=5)
 
         print("Status ESPN:", res.status_code)
 
         if res.status_code != 200:
-            raise Exception("Status diferente de 200")
+            raise Exception("Erro na API")
 
         data = res.json()
         jogos = []
@@ -55,7 +59,7 @@ def buscar_jogos():
             away = teams[1]["team"]["name"]
 
             # ==============================
-            # AJUSTE DE HORÁRIO (UTC → BR)
+            # HORÁRIO BR
             # ==============================
             data_str = event.get("date", "")
 
@@ -66,25 +70,16 @@ def buscar_jogos():
             else:
                 hora = "??:??"
 
-            jogos.append((home, away, hora))
+            jogo_id = f"{home} x {away}"
 
-        if jogos:
-            print(f"✅ {len(jogos)} jogos encontrados")
-            return jogos[:20]
+            jogos.append((jogo_id, home, away, hora))
+
+        return jogos
 
     except Exception as e:
         print("⚠️ erro ESPN:", e)
 
-    # ==============================
-    # FALLBACK
-    # ==============================
-    print("⚠️ fallback ativado")
-
-    return [
-        ("Time A", "Time B", "16:00"),
-        ("Time C", "Time D", "18:00"),
-        ("Time E", "Time F", "20:00"),
-    ]
+    return []
 
 # ==============================
 # ANÁLISE (ESTRATÉGIA)
@@ -101,55 +96,65 @@ def analisar():
         "Flamengo", "Palmeiras", "Atlético-MG"
     ]
 
-    for home, away, hora in jogos:
+    for jogo_id, home, away, hora in jogos:
+
+        # 🔁 evitar repetição
+        if jogo_id in jogos_enviados:
+            continue
 
         home_grande = any(t in home for t in times_grandes)
         away_grande = any(t in away for t in times_grandes)
 
-        # 🔵 OVER 2.5 FORTE
+        # 🔵 FORTE
         if home_grande and away_grande:
-            entradas.append(f"""🔵 OVER 2.5 (FORTE)
+            tipo = "🔵 OVER 2.5 (FORTE)"
+            desc = "📊 Duas equipes ofensivas"
 
-{home} x {away}
-🕒 {hora}
-
-📊 Duas equipes ofensivas
-""")
-
-        # 🟢 OVER 1.5 BOM
+        # 🟢 BOM
         elif home_grande or away_grande:
-            entradas.append(f"""🟢 OVER 1.5 (BOM)
+            tipo = "🟢 OVER 1.5 (BOM)"
+            desc = "📊 Um time forte em campo"
 
-{home} x {away}
-🕒 {hora}
-
-📊 Um time forte em campo
-""")
-
-        # 🟡 EVITAR
         else:
             continue
+
+        msg = f"""{tipo}
+
+{home} x {away}
+🕒 {hora}
+
+{desc}
+"""
+
+        entradas.append((jogo_id, msg))
 
     return entradas
 
 # ==============================
 # LOOP PRINCIPAL
 # ==============================
-print("🚀 BOT INICIADO (MODO ESTÁVEL FINAL)")
+print("🚀 BOT INICIADO (MODO TIPSTER FINAL)")
 
 while True:
     try:
         entradas = analisar()
 
-        msg = "📊 JOGOS DO DIA\n\n"
+        if not entradas:
+            print("🔁 Sem oportunidades")
+            time.sleep(600)
+            continue
 
-        for e in entradas:
-            msg += e + "\n"
+        for jogo_id, msg in entradas:
 
-        print("📤 Enviando mensagem...")
-        enviar(msg)
+            print(f"📤 Enviando: {jogo_id}")
+
+            enviar(f"🚨 NOVA ENTRADA\n\n{msg}")
+
+            jogos_enviados.add(jogo_id)
+
+            time.sleep(2)  # anti flood
 
     except Exception as e:
         print("💥 ERRO LOOP:", e)
 
-    time.sleep(600)  # 10 minutos
+    time.sleep(600)
