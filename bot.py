@@ -103,27 +103,32 @@ def analisar():
 
     for home, away, hora in jogos:
 
-        confronto = f"{home} {away}"
+        home_grande = any(t in home for t in times_grandes)
+        away_grande = any(t in away for t in times_grandes)
 
-        # 🔵 OVER 2.5 (VALOR)
-        if any(t in confronto for t in times_grandes):
-            entradas.append(f"""🔵 OVER 2.5 (VALOR)
+        # 🔵 OVER 2.5 FORTE
+        if home_grande and away_grande:
+            entradas.append(f"""🔵 OVER 2.5 (FORTE)
 
 {home} x {away}
 🕒 {hora}
 
-📊 Alta tendência ofensiva
+📊 Duas equipes ofensivas
 """)
 
-        # 🟢 OVER 1.5 (SEGURA)
+        # 🟢 OVER 1.5 BOM
+        elif home_grande or away_grande:
+            entradas.append(f"""🟢 OVER 1.5 (BOM)
+
+{home} x {away}
+🕒 {hora}
+
+📊 Um time forte em campo
+""")
+
+        # 🟡 EVITAR
         else:
-            entradas.append(f"""🟢 OVER 1.5 (SEGURA)
-
-{home} x {away}
-🕒 {hora}
-
-📊 Jogo equilibrado
-""")
+            continue
 
     return entradas
 
