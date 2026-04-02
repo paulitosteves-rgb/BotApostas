@@ -17,36 +17,42 @@ def enviar(msg):
         print("Erro Telegram:", e)
 
 def buscar_jogos():
-    print("🔍 Buscando jogos...")
+    print("🔍 Buscando jogos ESPN...")
 
     try:
-        url = "https://www.scorebat.com/video-api/v3/"
+        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
         res = requests.get(url, timeout=5)
 
         data = res.json()
-
         jogos = []
 
-        for item in data.get("response", []):
-            titulo = item.get("title", "")
+        for event in data.get("events", []):
 
-            if " vs " in titulo:
-                home, away = titulo.split(" vs ")
-                jogos.append((home.strip(), away.strip()))
+            comp = event.get("competitions", [])[0]
+            teams = comp.get("competitors", [])
+
+            if len(teams) < 2:
+                continue
+
+            home = teams[0]["team"]["name"]
+            away = teams[1]["team"]["name"]
+
+            hora = event.get("date", "")[11:16]
+
+            jogos.append((home, away, hora))
 
         if jogos:
-            print(f"✅ {len(jogos)} jogos encontrados")
-            return jogos[:10]
+            print(f"✅ {len(jogos)} jogos reais encontrados")
+            return jogos[:15]
 
     except Exception as e:
-        print("⚠️ erro externo:", e)
+        print("⚠️ erro ESPN:", e)
 
     print("⚠️ fallback ativado")
 
     return [
         ("Time A", "Time B"),
         ("Time C", "Time D"),
-        ("Time E", "Time F"),
     ]
 
 # ==============================
