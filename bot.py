@@ -12,6 +12,22 @@ STATS_API_KEY = "SUA_API_KEY_STATS"
 
 bot = Bot(token=TOKEN)
 
+import requests
+import asyncio
+from telegram import Bot
+from datetime import datetime, UTC, timedelta
+import time
+import unicodedata
+
+# ==============================
+# CONFIG
+# ==============================
+TOKEN = "SEU_TOKEN"
+CHAT_ID = "SEU_CHAT_ID"
+ODDS_API_KEY = "SUA_API_KEY"
+
+bot = Bot(token=TOKEN)
+
 LEAGUES = [
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -25,6 +41,12 @@ ultimos_jogos_enviados = set()
 cache_times = {}
 
 # ==============================
+# 🔥 NORMALIZAR TEXTO
+# ==============================
+def normalizar(texto):
+    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
+
+# ==============================
 # 🔥 SOFASCORE STATS
 # ==============================
 def buscar_stats_sofascore(time_nome):
@@ -33,6 +55,9 @@ def buscar_stats_sofascore(time_nome):
         return cache_times[time_nome]
 
     try:
+        nome_input = normalizar(time_nome)
+
+        # 🔍 Buscar ID do time
         url_search = f"https://api.sofascore.com/api/v1/search/all?q={time_nome}"
         res = requests.get(url_search, timeout=10)
         data = res.json()
@@ -40,17 +65,21 @@ def buscar_stats_sofascore(time_nome):
         time_id = None
 
         for item in data.get("results", []):
-            nome_api = item.get("entity", {}).get("name", "").lower()
+            nome_api_raw = item.get("entity", {}).get("name", "")
+            nome_api = normalizar(nome_api_raw)
 
-            # 🔥 matching melhorado
-            if any(p in nome_api for p in time_nome.lower().split()):
+            # 🔥 MATCH INTELIGENTE
+            if nome_input in nome_api or nome_api in nome_input:
+                print(f"🔎 Match: {time_nome} -> {nome_api_raw}")
                 time_id = item["entity"]["id"]
                 break
 
         if not time_id:
+            print(f"❌ Não encontrou time: {time_nome}")
             cache_times[time_nome] = 0
             return 0
 
+        # 📊 Últimos 5 jogos
         url_games = f"https://api.sofascore.com/api/v1/team/{time_id}/events/last/5"
         res = requests.get(url_games, timeout=10)
         jogos = res.json().get("events", [])
@@ -144,12 +173,12 @@ def buscar_jogos():
 
                     print(f"{home} vs {away} | {prob_home:.0f}% x {prob_away:.0f}% = {prob_final:.0f}%")
 
-                    # 🔥 fallback se stats falhar
+                    # 🔥 FALLBACK INTELIGENTE
                     if prob_home == 0 or prob_away == 0:
-                        print(f"⚠️ Ignorado sem stats: {home} x {away}")
-                        continue
+                        print(f"⚠️ Usando fallback: {home} x {away}")
+                        prob_final = 65
 
-                    # 🔥 filtro ajustado
+                    # 🔥 FILTRO
                     if prob_final < 65:
                         continue
 
@@ -188,10 +217,10 @@ async def enviar_alerta():
     ultimos_jogos_enviados = novos_jogos
 
     if not entradas:
-        print("📊 Nenhuma entrada com valor suficiente")
+        print("📊 Nenhuma entrada encontrada")
         return
 
-    msg = "🧠 ENTRADAS COM PROBABILIDADE ALTA\n\n"
+    msg = "🧠 ENTRADAS INTELIGENTES\n\n"
 
     for e in entradas:
         msg += e + "\n"
@@ -203,7 +232,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo inteligente corrigido)...")
+    print("🚀 Bot rodando (Sofascore corrigido + fallback)...")
 
     while True:
         await enviar_alerta()
