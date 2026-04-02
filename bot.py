@@ -14,22 +14,6 @@ ODDS_API_KEY = "f941db0959abcf753ad321a81aa18a10"
 
 bot = Bot(token=TOKEN)
 
-import requests
-import asyncio
-from telegram import Bot
-from datetime import datetime, UTC, timedelta
-import time
-import unicodedata
-
-# ==============================
-# CONFIG
-# ==============================
-TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
-CHAT_ID = "7729625060"
-ODDS_API_KEY = "f941db0959abcf753ad321a81aa18a10"
-
-bot = Bot(token=TOKEN)
-
 LEAGUES = [
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -62,7 +46,29 @@ def normalizar(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
 
 # ==============================
-# SOFASCORE STATS (ROBUSTO)
+# ODD -> PROB
+# ==============================
+def prob_por_odd(odd):
+    if not odd or odd <= 0:
+        return 0
+    return (1 / odd) * 100
+
+# ==============================
+# PEGAR ODD OVER 2.5
+# ==============================
+def extrair_odd_over25(jogo):
+    try:
+        for book in jogo.get("bookmakers", []):
+            for market in book.get("markets", []):
+                if market.get("key") == "totals":
+                    for outcome in market.get("outcomes", []):
+                        if outcome.get("name") == "Over" and outcome.get("point") == 2.5:
+                            return outcome.get("price")
+    except:
+        return None
+
+# ==============================
+# SOFASCORE STATS
 # ==============================
 def buscar_stats_sofascore(time_nome):
 
@@ -197,53 +203,61 @@ def buscar_jogos():
                     hora = (data_jogo - timedelta(hours=3)).strftime("%H:%M")
 
                     # ==============================
-                    # PROBABILIDADE REAL
+                    # STATS
                     # ==============================
                     prob_home_15, prob_home_25 = buscar_stats_sofascore(home)
                     prob_away_15, prob_away_25 = buscar_stats_sofascore(away)
 
-                    usou_fallback = False
-
-                    # OVER 1.5
+                    # ==============================
+                    # OVER 1.5 (MAIS FLEXÍVEL)
+                    # ==============================
                     if prob_home_15 == 0 or prob_away_15 == 0:
-                        prob15 = 60
-                        usou_fallback = True
+                        prob15 = 55
                     else:
                         prob15 = (prob_home_15 + prob_away_15) / 2
 
-                    # OVER 2.5
-                    if prob_home_25 == 0 or prob_away_25 == 0:
-                        prob25 = 55
-                        usou_fallback = True
-                    else:
+                    # ==============================
+                    # OVER 2.5 (HÍBRIDO)
+                    # ==============================
+                    odd_over25 = extrair_odd_over25(jogo)
+
+                    if prob_home_25 > 0 and prob_away_25 > 0:
                         prob25 = (prob_home_25 + prob_away_25) / 2
+                        origem = "📊 REAL"
 
-                    origem = "📊 REAL" if not usou_fallback else "⚠️ ESTIMADO"
+                    elif odd_over25:
+                        prob25 = prob_por_odd(odd_over25)
+                        origem = "💰 ODDS"
 
-                    print(f"{home} vs {away} | REAL: {prob_home_15:.0f}/{prob_away_15:.0f} | FINAL: {prob15:.0f}")
+                    else:
+                        prob25 = 55
+                        origem = "⚠️ ESTIMADO"
 
-                    # 🏷️ classificação
-                    if prob25 >= 70:
+                    print(f"{home} vs {away} | FINAL: {prob25:.0f}% | {origem}")
+
+                    # ==============================
+                    # CLASSIFICAÇÃO NOVA
+                    # ==============================
+                    if prob25 >= 65:
                         tipo = "🔵 SEGURA"
-                    elif prob25 >= 60:
+                    elif prob25 >= 58:
                         tipo = "🟢 BOA"
                     else:
                         tipo = "🟡 TESTE"
 
                     # ==============================
-                    # FILTROS
+                    # FILTROS MAIS LEVES
                     # ==============================
-                    if prob15 >= 55:
+                    if prob15 >= 50:
                         entradas.append(f"""{tipo}
 
 {home} x {away}
 🕒 {hora}
 
-{origem}
 📊 Over 1.5 → {prob15:.0f}%
 """)
 
-                    if prob25 >= 65:
+                    if prob25 >= 52:
                         entradas.append(f"""{tipo}
 
 {home} x {away}
@@ -251,6 +265,7 @@ def buscar_jogos():
 
 {origem}
 📊 Over 2.5 → {prob25:.0f}%
+💰 Odd → {odd_over25 if odd_over25 else "N/A"}
 """)
 
                     novos_jogos.add(jogo_id)
@@ -282,7 +297,7 @@ async def enviar_alerta():
         print("📊 Nenhuma entrada encontrada")
         return
 
-    msg = "📊 ENTRADAS DO DIA (VALIDAÇÃO REAL)\n\n"
+    msg = "📊 ENTRADAS DO DIA (VOLUME)\n\n"
 
     for e in entradas:
         msg += e + "\n"
@@ -294,7 +309,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo validação REAL)...")
+    print("🚀 Bot rodando (modo volume)...")
 
     while True:
         await enviar_alerta()
