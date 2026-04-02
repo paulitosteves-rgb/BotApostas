@@ -45,7 +45,7 @@ def normalizar(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
 
 # ==============================
-# SOFASCORE STATS
+# SOFASCORE STATS (CORRIGIDO)
 # ==============================
 def buscar_stats_sofascore(time_nome):
 
@@ -62,46 +62,64 @@ def buscar_stats_sofascore(time_nome):
         time_id = None
 
         for item in data.get("results", []):
-            nome_api_raw = item.get("entity", {}).get("name", "")
-            nome_api = normalizar(nome_api_raw)
+            nome_api = normalizar(item.get("entity", {}).get("name", ""))
 
             if nome_input in nome_api or nome_api in nome_input:
                 time_id = item["entity"]["id"]
                 break
 
         if not time_id:
-            cache_times[time_nome] = 0
-            return 0
+            cache_times[time_nome] = (0, 0)
+            return 0, 0
 
         url_games = f"https://api.sofascore.com/api/v1/team/{time_id}/events/last/5"
         res = requests.get(url_games, timeout=10)
         jogos = res.json().get("events", [])
 
         if not jogos:
-            cache_times[time_nome] = 0
-            return 0
+            cache_times[time_nome] = (0, 0)
+            return 0, 0
 
         over15 = 0
         over25 = 0
+        validos = 0
 
         for j in jogos:
-            home = j["homeScore"]["current"]
-            away = j["awayScore"]["current"]
 
-            if home is not None and away is not None:
-                total = home + away
+            home = j.get("homeScore", {}).get("current")
+            away = j.get("awayScore", {}).get("current")
 
-                if total >= 2:
-                    over15 += 1
-                if total >= 3:
-                    over25 += 1
+            # 🔥 fallback score
+            if home is None:
+                home = j.get("homeScore", {}).get("display")
 
-        prob15 = (over15 / len(jogos)) * 100
-        prob25 = (over25 / len(jogos)) * 100
+            if away is None:
+                away = j.get("awayScore", {}).get("display")
+
+            if home is None or away is None:
+                continue
+
+            if not isinstance(home, int) or not isinstance(away, int):
+                continue
+
+            total = home + away
+            validos += 1
+
+            if total >= 2:
+                over15 += 1
+            if total >= 3:
+                over25 += 1
+
+        if validos == 0:
+            cache_times[time_nome] = (0, 0)
+            return 0, 0
+
+        prob15 = (over15 / validos) * 100
+        prob25 = (over25 / validos) * 100
 
         cache_times[time_nome] = (prob15, prob25)
 
-        time.sleep(0.8)
+        time.sleep(0.5)
 
         return prob15, prob25
 
@@ -179,12 +197,13 @@ def buscar_jogos():
                     if prob25 == 0:
                         prob25 = 55
 
-                    tipo = "🟡 TESTE"
-
+                    # 🏷️ classificação
                     if prob25 >= 70:
                         tipo = "🔵 SEGURA"
                     elif prob25 >= 60:
                         tipo = "🟢 BOA"
+                    else:
+                        tipo = "🟡 TESTE"
 
                     # ==============================
                     # FILTROS
@@ -215,7 +234,7 @@ def buscar_jogos():
         except Exception as e:
             print("Erro liga:", league, e)
 
-    return entradas[:25], novos_jogos
+    return entradas[:30], novos_jogos
 
 
 # ==============================
@@ -233,10 +252,10 @@ async def enviar_alerta():
     ultimos_jogos_enviados = novos_jogos
 
     if not entradas:
-        print("📊 Nenhuma entrada")
+        print("📊 Nenhuma entrada encontrada")
         return
 
-    msg = "📊 ENTRADAS DO DIA (VALIAÇÃO)\n\n"
+    msg = "📊 ENTRADAS DO DIA (VALIDAÇÃO)\n\n"
 
     for e in entradas:
         msg += e + "\n"
@@ -248,11 +267,11 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo validação agressiva)...")
+    print("🚀 Bot rodando (modo estável validação)...")
 
     while True:
         await enviar_alerta()
-        await asyncio.sleep(600)  # 10 min
+        await asyncio.sleep(600)
 
 
 # ==============================
