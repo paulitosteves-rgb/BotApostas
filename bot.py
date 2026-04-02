@@ -14,6 +14,22 @@ ODDS_API_KEY = "f941db0959abcf753ad321a81aa18a10"
 
 bot = Bot(token=TOKEN)
 
+import requests
+import asyncio
+from telegram import Bot
+from datetime import datetime, UTC, timedelta
+import time
+import unicodedata
+
+# ==============================
+# CONFIG
+# ==============================
+TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
+CHAT_ID = "7729625060"
+ODDS_API_KEY = "f941db0959abcf753ad321a81aa18a10"
+
+bot = Bot(token=TOKEN)
+
 LEAGUES = [
     "soccer_epl",
     "soccer_spain_la_liga",
