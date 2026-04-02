@@ -32,8 +32,11 @@ LEAGUES = [
     "soccer_epl",
     "soccer_spain_la_liga",
     "soccer_italy_serie_a",
+    "soccer_germany_bundesliga",
+    "soccer_france_ligue_one",
     "soccer_brazil_campeonato",
-    "soccer_argentina_primera_division"
+    "soccer_brazil_serie_b",
+    "soccer_argentina_primera_division",
 ]
 
 ultimos_jogos_enviados = set()
@@ -46,7 +49,7 @@ def normalizar(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
 
 # ==============================
-# ODD -> PROB
+# CONVERTER ODD -> PROB
 # ==============================
 def prob_por_odd(odd):
     if not odd or odd <= 0:
@@ -54,11 +57,12 @@ def prob_por_odd(odd):
     return (1 / odd) * 100
 
 # ==============================
-# PEGAR ODDS
+# PEGAR ODDS OVER
 # ==============================
 def extrair_odds(jogo):
     try:
-        for book in jogo.get("bookmakers", []):
+        bookmakers = jogo.get("bookmakers", [])
+        for book in bookmakers:
             for market in book.get("markets", []):
                 if market.get("key") == "totals":
                     for outcome in market.get("outcomes", []):
@@ -67,6 +71,79 @@ def extrair_odds(jogo):
         return None
     except:
         return None
+
+# ==============================
+# SOFASCORE STATS
+# ==============================
+def buscar_stats_sofascore(time_nome):
+
+    if time_nome in cache_times:
+        return cache_times[time_nome]
+
+    try:
+        nome_input = normalizar(time_nome)
+
+        url_search = f"https://api.sofascore.com/api/v1/search/all?q={time_nome}"
+        res = requests.get(url_search, timeout=10)
+        data = res.json()
+
+        time_id = None
+
+        for item in data.get("results", []):
+            nome_api = normalizar(item.get("entity", {}).get("name", ""))
+            if nome_input in nome_api or nome_api in nome_input:
+                time_id = item["entity"]["id"]
+                break
+
+        if not time_id:
+            cache_times[time_nome] = (0, 0)
+            return 0, 0
+
+        url_games = f"https://api.sofascore.com/api/v1/team/{time_id}/events/last/5"
+        res = requests.get(url_games, timeout=10)
+        jogos = res.json().get("events", [])
+
+        over15 = 0
+        over25 = 0
+        validos = 0
+
+        for j in jogos:
+
+            home = j.get("homeScore", {}).get("current")
+            away = j.get("awayScore", {}).get("current")
+
+            if home is None:
+                home = j.get("homeScore", {}).get("display")
+            if away is None:
+                away = j.get("awayScore", {}).get("display")
+
+            if not isinstance(home, int) or not isinstance(away, int):
+                continue
+
+            total = home + away
+            validos += 1
+
+            if total >= 2:
+                over15 += 1
+            if total >= 3:
+                over25 += 1
+
+        if validos == 0:
+            return 0, 0
+
+        prob15 = (over15 / validos) * 100
+        prob25 = (over25 / validos) * 100
+
+        cache_times[time_nome] = (prob15, prob25)
+
+        time.sleep(0.5)
+
+        return prob15, prob25
+
+    except Exception as e:
+        print("Erro SofaScore:", e)
+        return 0, 0
+
 
 # ==============================
 # BUSCAR JOGOS
@@ -110,29 +187,60 @@ def buscar_jogos():
                     if not commence_time:
                         continue
 
-                    data_jogo = datetime.fromisoformat(
-                        commence_time.replace("Z", "+00:00")
-                    )
+                    data_jogo = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
 
                     if not (agora <= data_jogo <= limite):
                         continue
 
                     hora = (data_jogo - timedelta(hours=3)).strftime("%H:%M")
 
-                    odd = extrair_odds(jogo)
-                    prob = prob_por_odd(odd)
+                    # ==============================
+                    # STATS
+                    # ==============================
+                    prob_home_15, prob_home_25 = buscar_stats_sofascore(home)
+                    prob_away_15, prob_away_25 = buscar_stats_sofascore(away)
 
-                    print(f"{home} vs {away} | Odd: {odd} | Prob: {prob:.0f}%")
+                    # ==============================
+                    # ODDS
+                    # ==============================
+                    odd_over25 = extrair_odds(jogo)
+                    prob_odds = prob_por_odd(odd_over25) if odd_over25 else 0
 
-                    if prob < 55:
+                    # ==============================
+                    # LÓGICA HÍBRIDA
+                    # ==============================
+                    if prob_home_25 > 0 and prob_away_25 > 0:
+                        prob_final = (prob_home_25 + prob_away_25) / 2
+                        origem = "📊 STATS"
+                    elif prob_odds > 0:
+                        prob_final = prob_odds
+                        origem = "💰 ODDS"
+                    else:
                         continue
 
-                    entradas.append(f"""
+                    print(f"{home} vs {away} | FINAL: {prob_final:.0f}% | {origem}")
+
+                    # ==============================
+                    # FILTRO
+                    # ==============================
+                    if prob_final < 55:
+                        continue
+
+                    if prob_final >= 70:
+                        tipo = "🔵 SEGURA"
+                    elif prob_final >= 60:
+                        tipo = "🟢 BOA"
+                    else:
+                        tipo = "🟡 TESTE"
+
+                    entradas.append(f"""{tipo}
+
 {home} x {away}
 🕒 {hora}
 
-💰 Odd: {odd}
-📊 Prob: {prob:.0f}%
+{origem}
+📊 Probabilidade → {prob_final:.0f}%
+💰 Odd → {odd_over25 if odd_over25 else "N/A"}
 """)
 
                     novos_jogos.add(jogo_id)
@@ -143,32 +251,43 @@ def buscar_jogos():
         except Exception as e:
             print("Erro liga:", league, e)
 
-    return entradas[:20], novos_jogos
+    return entradas[:25], novos_jogos
+
+
+# ==============================
+# TELEGRAM
+# ==============================
+async def enviar_alerta():
+    global ultimos_jogos_enviados
+
+    entradas, novos_jogos = buscar_jogos()
+
+    if novos_jogos == ultimos_jogos_enviados:
+        print("🔁 Sem novidades")
+        return
+
+    ultimos_jogos_enviados = novos_jogos
+
+    if not entradas:
+        print("📊 Nenhuma entrada")
+        return
+
+    msg = "📊 OPORTUNIDADES DO DIA (HÍBRIDO)\n\n"
+
+    for e in entradas:
+        msg += e + "\n"
+
+    await bot.send_message(chat_id=CHAT_ID, text=msg)
 
 
 # ==============================
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo build-safe)...")
+    print("🚀 Bot rodando (modo híbrido odds + stats)...")
 
     while True:
-        try:
-            entradas, novos = buscar_jogos()
-
-            if entradas:
-                msg = "📊 OPORTUNIDADES\n\n"
-                for e in entradas:
-                    msg += e + "\n"
-
-                enviar_telegram(msg)
-
-            else:
-                print("🔁 Sem entradas")
-
-        except Exception as e:
-            print("Erro geral:", e)
-
+        await enviar_alerta()
         await asyncio.sleep(600)
 
 
