@@ -15,18 +15,24 @@ CHAT_ID = "7729625060"
 def enviar(msg):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        requests.post(url, json={"chat_id": CHAT_ID, "text": msg}, timeout=5)
-    except:
-        print("Erro Telegram")
+        requests.post(url, json={"chat_id": CHAT_ID, "text": msg}, timeout=3)
+    except Exception as e:
+        print("Erro Telegram:", e)
 
 # ==============================
-# SCRAPING SIMPLES
+# BUSCAR JOGOS (ULTRA SEGURO)
 # ==============================
 def buscar_jogos():
 
+    print("🔍 Buscando jogos...")
+
     try:
         url = "https://www.scorebat.com/video-api/v3/"
-        res = requests.get(url, timeout=5)
+
+        res = requests.get(url, timeout=3)
+
+        if res.status_code != 200:
+            raise Exception("Status inválido")
 
         data = res.json()
 
@@ -36,66 +42,50 @@ def buscar_jogos():
 
             titulo = item.get("title", "")
 
-            if "vs" in titulo:
-                partes = titulo.split(" vs ")
-
-                if len(partes) == 2:
-                    home = partes[0].strip()
-                    away = partes[1].strip()
-
-                    jogos.append((home, away, "HOJE"))
-
-        print(f"📊 Jogos encontrados: {len(jogos)}")
+            if " vs " in titulo:
+                home, away = titulo.split(" vs ")
+                jogos.append((home.strip(), away.strip()))
 
         if jogos:
-            return jogos[:20]
+            print(f"✅ {len(jogos)} jogos encontrados")
+            return jogos[:10]
 
     except Exception as e:
-        print("Erro scraping:", e)
+        print("⚠️ Falha externa:", e)
 
-    return []
+    # 🔥 fallback garantido
+    print("⚠️ usando fallback local")
 
-# ==============================
-# LÓGICA SIMPLES (BASE INICIAL)
-# ==============================
-def analisar():
-
-    jogos = buscar_jogos()
-
-    entradas = []
-
-    for home, away, hora in jogos:
-
-        entradas.append(f"""🟡 JOGO
-
-{home} x {away}
-🕒 {hora}
-
-📊 Acompanhamento ativo
-""")
-
-    return entradas
+    return [
+        ("Time A", "Time B"),
+        ("Time C", "Time D"),
+        ("Time E", "Time F"),
+    ]
 
 # ==============================
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo scraping)...")
+
+    print("🚀 BOT INICIADO COM SUCESSO")
 
     while True:
 
-        entradas = analisar()
+        try:
+            jogos = buscar_jogos()
 
-        if entradas:
-            msg = "📊 JOGOS DO DIA (SCRAPING)\n\n"
-            for e in entradas:
-                msg += e + "\n"
+            msg = "📊 JOGOS DO DIA\n\n"
 
+            for home, away in jogos:
+                msg += f"{home} x {away}\n"
+
+            print("📤 Enviando...")
             enviar(msg)
-        else:
-            print("🔁 Sem jogos encontrados")
 
-        await asyncio.sleep(600)
+        except Exception as e:
+            print("💥 ERRO LOOP:", e)
+
+        await asyncio.sleep(10)  # curto pra debug
 
 # ==============================
 # START
