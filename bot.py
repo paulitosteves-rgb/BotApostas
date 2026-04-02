@@ -19,33 +19,46 @@ LEAGUES = [
     "soccer_italy_serie_a",
     "soccer_germany_bundesliga",
     "soccer_france_ligue_one",
-
     "soccer_brazil_campeonato",
     "soccer_brazil_serie_b",
-
-    "soccer_netherlands_eredivisie",
-    "soccer_portugal_primeira_liga",
-    "soccer_turkey_super_league",
-
     "soccer_argentina_primera_division",
-    "soccer_mexico_ligamx",
-    "soccer_usa_mls",
-
-    "soccer_japan_j_league",
-    "soccer_korea_kleague1"
 ]
 
 ultimos_jogos_enviados = set()
 cache_times = {}
 
 # ==============================
-# NORMALIZAR TEXTO
+# NORMALIZAR
 # ==============================
 def normalizar(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
 
 # ==============================
-# SOFASCORE STATS (ROBUSTO)
+# CONVERTER ODD -> PROB
+# ==============================
+def prob_por_odd(odd):
+    if not odd or odd <= 0:
+        return 0
+    return (1 / odd) * 100
+
+# ==============================
+# PEGAR ODDS OVER
+# ==============================
+def extrair_odds(jogo):
+    try:
+        bookmakers = jogo.get("bookmakers", [])
+        for book in bookmakers:
+            for market in book.get("markets", []):
+                if market.get("key") == "totals":
+                    for outcome in market.get("outcomes", []):
+                        if outcome.get("name") == "Over" and outcome.get("point") == 2.5:
+                            return outcome.get("price")
+        return None
+    except:
+        return None
+
+# ==============================
+# SOFASCORE STATS
 # ==============================
 def buscar_stats_sofascore(time_nome):
 
@@ -63,7 +76,6 @@ def buscar_stats_sofascore(time_nome):
 
         for item in data.get("results", []):
             nome_api = normalizar(item.get("entity", {}).get("name", ""))
-
             if nome_input in nome_api or nome_api in nome_input:
                 time_id = item["entity"]["id"]
                 break
@@ -76,10 +88,6 @@ def buscar_stats_sofascore(time_nome):
         res = requests.get(url_games, timeout=10)
         jogos = res.json().get("events", [])
 
-        if not jogos:
-            cache_times[time_nome] = (0, 0)
-            return 0, 0
-
         over15 = 0
         over25 = 0
         validos = 0
@@ -91,12 +99,8 @@ def buscar_stats_sofascore(time_nome):
 
             if home is None:
                 home = j.get("homeScore", {}).get("display")
-
             if away is None:
                 away = j.get("awayScore", {}).get("display")
-
-            if home is None or away is None:
-                continue
 
             if not isinstance(home, int) or not isinstance(away, int):
                 continue
@@ -110,7 +114,6 @@ def buscar_stats_sofascore(time_nome):
                 over25 += 1
 
         if validos == 0:
-            cache_times[time_nome] = (0, 0)
             return 0, 0
 
         prob15 = (over15 / validos) * 100
@@ -124,7 +127,6 @@ def buscar_stats_sofascore(time_nome):
 
     except Exception as e:
         print("Erro SofaScore:", e)
-        cache_times[time_nome] = (0, 0)
         return 0, 0
 
 
@@ -132,6 +134,7 @@ def buscar_stats_sofascore(time_nome):
 # BUSCAR JOGOS
 # ==============================
 def buscar_jogos():
+
     agora = datetime.now(UTC)
     limite = agora + timedelta(hours=24)
 
@@ -162,7 +165,6 @@ def buscar_jogos():
                     away = jogo.get("away_team")
 
                     jogo_id = f"{home} x {away}"
-
                     if jogo_id in novos_jogos:
                         continue
 
@@ -170,9 +172,7 @@ def buscar_jogos():
                     if not commence_time:
                         continue
 
-                    data_jogo = datetime.fromisoformat(
-                        commence_time.replace("Z", "+00:00")
-                    )
+                    data_jogo = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
 
                     if not (agora <= data_jogo <= limite):
                         continue
@@ -180,60 +180,52 @@ def buscar_jogos():
                     hora = (data_jogo - timedelta(hours=3)).strftime("%H:%M")
 
                     # ==============================
-                    # PROBABILIDADE REAL
+                    # STATS
                     # ==============================
                     prob_home_15, prob_home_25 = buscar_stats_sofascore(home)
                     prob_away_15, prob_away_25 = buscar_stats_sofascore(away)
 
-                    usou_fallback = False
+                    # ==============================
+                    # ODDS
+                    # ==============================
+                    odd_over25 = extrair_odds(jogo)
+                    prob_odds = prob_por_odd(odd_over25) if odd_over25 else 0
 
-                    # OVER 1.5
-                    if prob_home_15 == 0 or prob_away_15 == 0:
-                        prob15 = 60
-                        usou_fallback = True
+                    # ==============================
+                    # LÓGICA HÍBRIDA
+                    # ==============================
+                    if prob_home_25 > 0 and prob_away_25 > 0:
+                        prob_final = (prob_home_25 + prob_away_25) / 2
+                        origem = "📊 STATS"
+                    elif prob_odds > 0:
+                        prob_final = prob_odds
+                        origem = "💰 ODDS"
                     else:
-                        prob15 = (prob_home_15 + prob_away_15) / 2
+                        continue
 
-                    # OVER 2.5
-                    if prob_home_25 == 0 or prob_away_25 == 0:
-                        prob25 = 55
-                        usou_fallback = True
-                    else:
-                        prob25 = (prob_home_25 + prob_away_25) / 2
+                    print(f"{home} vs {away} | FINAL: {prob_final:.0f}% | {origem}")
 
-                    origem = "📊 REAL" if not usou_fallback else "⚠️ ESTIMADO"
+                    # ==============================
+                    # FILTRO
+                    # ==============================
+                    if prob_final < 55:
+                        continue
 
-                    print(f"{home} vs {away} | REAL: {prob_home_15:.0f}/{prob_away_15:.0f} | FINAL: {prob15:.0f}")
-
-                    # 🏷️ classificação
-                    if prob25 >= 70:
+                    if prob_final >= 70:
                         tipo = "🔵 SEGURA"
-                    elif prob25 >= 60:
+                    elif prob_final >= 60:
                         tipo = "🟢 BOA"
                     else:
                         tipo = "🟡 TESTE"
 
-                    # ==============================
-                    # FILTROS
-                    # ==============================
-                    if prob15 >= 55:
-                        entradas.append(f"""{tipo}
+                    entradas.append(f"""{tipo}
 
 {home} x {away}
 🕒 {hora}
 
 {origem}
-📊 Over 1.5 → {prob15:.0f}%
-""")
-
-                    if prob25 >= 65:
-                        entradas.append(f"""{tipo}
-
-{home} x {away}
-🕒 {hora}
-
-{origem}
-📊 Over 2.5 → {prob25:.0f}%
+📊 Probabilidade → {prob_final:.0f}%
+💰 Odd → {odd_over25 if odd_over25 else "N/A"}
 """)
 
                     novos_jogos.add(jogo_id)
@@ -244,7 +236,7 @@ def buscar_jogos():
         except Exception as e:
             print("Erro liga:", league, e)
 
-    return entradas[:30], novos_jogos
+    return entradas[:25], novos_jogos
 
 
 # ==============================
@@ -262,10 +254,10 @@ async def enviar_alerta():
     ultimos_jogos_enviados = novos_jogos
 
     if not entradas:
-        print("📊 Nenhuma entrada encontrada")
+        print("📊 Nenhuma entrada")
         return
 
-    msg = "📊 ENTRADAS DO DIA (VALIDAÇÃO REAL)\n\n"
+    msg = "📊 OPORTUNIDADES DO DIA (HÍBRIDO)\n\n"
 
     for e in entradas:
         msg += e + "\n"
@@ -277,7 +269,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo validação REAL)...")
+    print("🚀 Bot rodando (modo híbrido odds + stats)...")
 
     while True:
         await enviar_alerta()
