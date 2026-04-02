@@ -13,7 +13,20 @@ CHAT_ID = "7729625060"
 
 bot = Bot(token=TOKEN)
 
-cache_times = {}
+# ==============================
+# TELEGRAM VIA HTTP (SEGURO)
+# ==============================
+def enviar_telegram(msg):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": msg
+    }
+
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print("Erro Telegram:", e)
 
 # ==============================
 # NORMALIZAR
@@ -21,8 +34,10 @@ cache_times = {}
 def normalizar(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
 
+cache_times = {}
+
 # ==============================
-# BUSCAR JOGOS DO DIA (FIX)
+# BUSCAR JOGOS DO DIA
 # ==============================
 def buscar_jogos_dia():
 
@@ -36,7 +51,6 @@ def buscar_jogos_dia():
         jogos = []
 
         for j in data.get("events", []):
-
             home = j.get("homeTeam", {}).get("name")
             away = j.get("awayTeam", {}).get("name")
             timestamp = j.get("startTimestamp")
@@ -73,8 +87,7 @@ def buscar_stats_time(time_nome):
         time_id = None
 
         for item in data.get("results", []):
-            nome = item.get("entity", {}).get("name", "")
-            if nome:
+            if item.get("entity", {}).get("name"):
                 time_id = item["entity"]["id"]
                 break
 
@@ -166,32 +179,24 @@ def analisar():
     return entradas[:20]
 
 # ==============================
-# TELEGRAM
-# ==============================
-async def enviar():
-
-    entradas = analisar()
-
-    if not entradas:
-        print("🔁 Sem oportunidades")
-        return
-
-    msg = "📊 ENTRADAS DO DIA (SEM ODDS)\n\n"
-
-    for e in entradas:
-        msg += e + "\n"
-
-    await bot.send_message(chat_id=CHAT_ID, text=msg)
-
-# ==============================
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modelo corrigido)...")
+    print("🚀 Bot rodando (modo estável HTTP)...")
 
     while True:
         try:
-            await enviar()
+            entradas = analisar()
+
+            if entradas:
+                msg = "📊 ENTRADAS DO DIA\n\n"
+                for e in entradas:
+                    msg += e + "\n"
+
+                enviar_telegram(msg)
+            else:
+                print("🔁 Sem oportunidades")
+
         except Exception as e:
             print("Erro geral:", e)
 
@@ -200,5 +205,5 @@ async def main():
 # ==============================
 # START
 # ==============================
-if __name__ == "_main_":
+if __name__ == "__main__":
     asyncio.run(main())
