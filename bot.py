@@ -84,14 +84,35 @@ def analisar():
     jogos = buscar_jogos()
     entradas = []
 
+    times_grandes = [
+        "Barcelona", "Real Madrid", "Manchester City", "Liverpool",
+        "Bayern Munich", "PSG", "Arsenal", "Chelsea",
+        "Juventus", "Inter", "Milan",
+        "Flamengo", "Palmeiras", "Atlético-MG"
+    ]
+
     for home, away, hora in jogos:
 
-        entradas.append(f"""🟡 JOGO
+        texto = f"{home} {away}"
+
+        # 🔵 Over 2.5 (valor)
+        if any(t in texto for t in times_grandes):
+            entradas.append(f"""🔵 OVER 2.5 (VALOR)
 
 {home} x {away}
 🕒 {hora}
 
-📊 Monitoramento ativo
+📊 Alta tendência ofensiva
+""")
+
+        # 🟢 Over 1.5 (seguro)
+        else:
+            entradas.append(f"""🟢 OVER 1.5 (SEGURA)
+
+{home} x {away}
+🕒 {hora}
+
+📊 Jogo equilibrado
 """)
 
     return entradas
