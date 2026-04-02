@@ -45,7 +45,7 @@ def normalizar(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode().lower()
 
 # ==============================
-# SOFASCORE STATS (CORRIGIDO)
+# SOFASCORE STATS (ROBUSTO)
 # ==============================
 def buscar_stats_sofascore(time_nome):
 
@@ -89,7 +89,6 @@ def buscar_stats_sofascore(time_nome):
             home = j.get("homeScore", {}).get("current")
             away = j.get("awayScore", {}).get("current")
 
-            # 🔥 fallback score
             if home is None:
                 home = j.get("homeScore", {}).get("display")
 
@@ -181,21 +180,30 @@ def buscar_jogos():
                     hora = (data_jogo - timedelta(hours=3)).strftime("%H:%M")
 
                     # ==============================
-                    # PROBABILIDADE
+                    # PROBABILIDADE REAL
                     # ==============================
                     prob_home_15, prob_home_25 = buscar_stats_sofascore(home)
                     prob_away_15, prob_away_25 = buscar_stats_sofascore(away)
 
-                    prob15 = (prob_home_15 + prob_away_15) / 2
-                    prob25 = (prob_home_25 + prob_away_25) / 2
+                    usou_fallback = False
 
-                    print(f"{home} vs {away} | O1.5: {prob15:.0f}% | O2.5: {prob25:.0f}%")
-
-                    # 🔥 fallback
-                    if prob15 == 0:
+                    # OVER 1.5
+                    if prob_home_15 == 0 or prob_away_15 == 0:
                         prob15 = 60
-                    if prob25 == 0:
+                        usou_fallback = True
+                    else:
+                        prob15 = (prob_home_15 + prob_away_15) / 2
+
+                    # OVER 2.5
+                    if prob_home_25 == 0 or prob_away_25 == 0:
                         prob25 = 55
+                        usou_fallback = True
+                    else:
+                        prob25 = (prob_home_25 + prob_away_25) / 2
+
+                    origem = "📊 REAL" if not usou_fallback else "⚠️ ESTIMADO"
+
+                    print(f"{home} vs {away} | REAL: {prob_home_15:.0f}/{prob_away_15:.0f} | FINAL: {prob15:.0f}")
 
                     # 🏷️ classificação
                     if prob25 >= 70:
@@ -214,6 +222,7 @@ def buscar_jogos():
 {home} x {away}
 🕒 {hora}
 
+{origem}
 📊 Over 1.5 → {prob15:.0f}%
 """)
 
@@ -223,6 +232,7 @@ def buscar_jogos():
 {home} x {away}
 🕒 {hora}
 
+{origem}
 📊 Over 2.5 → {prob25:.0f}%
 """)
 
@@ -255,7 +265,7 @@ async def enviar_alerta():
         print("📊 Nenhuma entrada encontrada")
         return
 
-    msg = "📊 ENTRADAS DO DIA (VALIDAÇÃO)\n\n"
+    msg = "📊 ENTRADAS DO DIA (VALIDAÇÃO REAL)\n\n"
 
     for e in entradas:
         msg += e + "\n"
@@ -267,7 +277,7 @@ async def enviar_alerta():
 # LOOP
 # ==============================
 async def main():
-    print("🚀 Bot rodando (modo estável validação)...")
+    print("🚀 Bot rodando (modo validação REAL)...")
 
     while True:
         await enviar_alerta()
