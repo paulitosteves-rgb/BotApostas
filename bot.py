@@ -1,5 +1,6 @@
 import requests
 import time
+from datetime import datetime, timedelta, timezone
 
 # ==============================
 # CONFIG
@@ -53,8 +54,17 @@ def buscar_jogos():
             home = teams[0]["team"]["name"]
             away = teams[1]["team"]["name"]
 
+            # ==============================
+            # AJUSTE DE HORÁRIO (UTC → BR)
+            # ==============================
             data_str = event.get("date", "")
-            hora = data_str[11:16] if data_str else "??:??"
+
+            if data_str:
+                data_utc = datetime.fromisoformat(data_str.replace("Z", "+00:00"))
+                data_br = data_utc.astimezone(timezone(timedelta(hours=-3)))
+                hora = data_br.strftime("%H:%M")
+            else:
+                hora = "??:??"
 
             jogos.append((home, away, hora))
 
@@ -77,7 +87,7 @@ def buscar_jogos():
     ]
 
 # ==============================
-# ANALISAR
+# ANÁLISE (ESTRATÉGIA)
 # ==============================
 def analisar():
 
@@ -93,10 +103,10 @@ def analisar():
 
     for home, away, hora in jogos:
 
-        texto = f"{home} {away}"
+        confronto = f"{home} {away}"
 
-        # 🔵 Over 2.5 (valor)
-        if any(t in texto for t in times_grandes):
+        # 🔵 OVER 2.5 (VALOR)
+        if any(t in confronto for t in times_grandes):
             entradas.append(f"""🔵 OVER 2.5 (VALOR)
 
 {home} x {away}
@@ -105,7 +115,7 @@ def analisar():
 📊 Alta tendência ofensiva
 """)
 
-        # 🟢 Over 1.5 (seguro)
+        # 🟢 OVER 1.5 (SEGURA)
         else:
             entradas.append(f"""🟢 OVER 1.5 (SEGURA)
 
