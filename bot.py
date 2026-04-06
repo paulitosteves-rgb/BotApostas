@@ -9,18 +9,6 @@ TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "7729625060"
 
 # ==============================
-# CONFIG
-# ==============================
-TOKEN = "SEU_TOKEN"
-CHAT_ID = "SEU_CHAT_ID"
-
-# ==============================
-# CONFIG
-# ==============================
-TOKEN = "SEU_TOKEN"
-CHAT_ID = "SEU_CHAT_ID"
-
-# ==============================
 # CONTROLE
 # ==============================
 jogos_enviados = set()
