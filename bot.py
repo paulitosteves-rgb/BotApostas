@@ -15,6 +15,12 @@ TOKEN = "SEU_TOKEN"
 CHAT_ID = "SEU_CHAT_ID"
 
 # ==============================
+# CONFIG
+# ==============================
+TOKEN = "SEU_TOKEN"
+CHAT_ID = "SEU_CHAT_ID"
+
+# ==============================
 # CONTROLE
 # ==============================
 jogos_enviados = set()
