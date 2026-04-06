@@ -9,7 +9,7 @@ TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "7729625060"
 
 # ==============================
-# CONTROLE
+# CONTROLE DE ENVIO
 # ==============================
 jogos_enviados = set()
 
@@ -24,19 +24,23 @@ def enviar(msg):
         print("Erro Telegram:", e)
 
 # ==============================
-# BUSCAR JOGOS ESPN
+# BUSCAR JOGOS (ESPN)
 # ==============================
 def buscar_jogos():
-    print("🔍 Buscando jogos...")
+    print("🔍 Buscando jogos ESPN...")
 
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
     try:
         url = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=5)
+
+        print("Status ESPN:", res.status_code)
 
         if res.status_code != 200:
-            return []
+            raise Exception("Erro na API")
 
         data = res.json()
         jogos = []
@@ -47,30 +51,12 @@ def buscar_jogos():
             if not competitions:
                 continue
 
-            comp = competitions[0]
-
-            teams = comp.get("competitors", [])
+            teams = competitions[0].get("competitors", [])
             if len(teams) < 2:
                 continue
 
             home = teams[0]["team"]["name"]
             away = teams[1]["team"]["name"]
-
-            # ==============================
-            # LIGA
-            # ==============================
-            liga = event.get("league", {}).get("name", "")
-
-            ligas_boas = [
-                "Premier League", "La Liga", "Bundesliga",
-                "Serie A", "Ligue 1",
-                "Eredivisie", "Primeira Liga",
-                "MLS", "A-League",
-                "Brasileirão", "Argentina"
-            ]
-
-            if not any(l.lower() in liga.lower() for l in ligas_boas):
-                continue
 
             # ==============================
             # HORÁRIO BR
@@ -86,17 +72,17 @@ def buscar_jogos():
 
             jogo_id = f"{home} x {away}"
 
-            jogos.append((jogo_id, home, away, hora, liga))
+            jogos.append((jogo_id, home, away, hora))
 
-        print(f"📊 Jogos filtrados: {len(jogos)}")
         return jogos
 
     except Exception as e:
-        print("Erro ESPN:", e)
-        return []
+        print("⚠️ erro ESPN:", e)
+
+    return []
 
 # ==============================
-# ANÁLISE INTELIGENTE
+# ANÁLISE (ESTRATÉGIA)
 # ==============================
 def analisar():
 
@@ -105,70 +91,46 @@ def analisar():
 
     times_grandes = [
         "Barcelona", "Real Madrid", "Manchester City", "Liverpool",
-        "Bayern", "PSG", "Arsenal", "Chelsea",
+        "Bayern Munich", "PSG", "Arsenal", "Chelsea",
         "Juventus", "Inter", "Milan",
-        "Flamengo", "Palmeiras", "Atlético"
+        "Flamengo", "Palmeiras", "Atlético-MG"
     ]
 
-    ligas_over = ["Eredivisie", "A-League", "MLS"]
+    for jogo_id, home, away, hora in jogos:
 
-    for jogo_id, home, away, hora, liga in jogos:
-
+        # evitar repetição
         if jogo_id in jogos_enviados:
             continue
 
-        home_grande = any(t.lower() in home.lower() for t in times_grandes)
-        away_grande = any(t.lower() in away.lower() for t in times_grandes)
+        home_grande = any(t in home for t in times_grandes)
+        away_grande = any(t in away for t in times_grandes)
 
-        # ==============================
-        # 🔵 OVER 2.5 (VALOR REAL)
-        # ==============================
+        # 🔵 OVER 2.5 (FORTE)
         if home_grande and away_grande:
-
             msg = f"""🔥 OVER 2.5 (FORTE)
 
 {home} x {away}
 🕒 {hora}
 
-📊 Confronto entre equipes ofensivas
-📈 Alta probabilidade de gols
+📊 Duas equipes com perfil ofensivo
+📈 Forte tendência de gols
 
-💰 Entrada recomendada: simples
+💰 Sugestão: entrada simples
 ⚠️ Gestão: até 2% da banca
 """
 
-        # ==============================
         # 🟢 OVER 1.5 (BOM)
-        # ==============================
-        elif home_grande != away_grande:
-
+        elif home_grande or away_grande:
             msg = f"""🟢 OVER 1.5 (BOM)
 
 {home} x {away}
 🕒 {hora}
 
-📊 Cenário favorável para gols
+📊 Cenário propício para pelo menos 2 gols
 📈 Tendência ofensiva consistente
 
-💰 Entrada recomendada: múltiplas
+💰 Sugestão: múltiplas ou entrada conservadora
 ⚠️ Gestão: 1 a 2% da banca
-"""
-
-        # ==============================
-        # 🟡 OVER 1.5 (MODERADO)
-        # ==============================
-        elif any(l.lower() in liga.lower() for l in ligas_over):
-
-            msg = f"""🟡 OVER 1.5 (MODERADO)
-
-{home} x {away}
-🕒 {hora}
-
-📊 Liga com alta média de gols
-📈 Forte padrão de over
-
-💰 Entrada recomendada: múltiplas
-⚠️ Gestão: até 1% da banca
 """
 
         else:
@@ -181,7 +143,7 @@ def analisar():
 # ==============================
 # LOOP PRINCIPAL
 # ==============================
-print("🚀 BOT RODANDO (VERSÃO FINAL REFINADA)")
+print("🚀 BOT INICIADO (MODO TIPSTER FINAL)")
 
 while True:
     try:
@@ -203,6 +165,6 @@ while True:
             time.sleep(2)
 
     except Exception as e:
-        print("Erro geral:", e)
+        print("💥 ERRO LOOP:", e)
 
     time.sleep(600)
