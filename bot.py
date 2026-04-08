@@ -6,13 +6,15 @@ from datetime import datetime, timedelta
 TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "@Over_golsPV"
 
-SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
-SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/summary?event="
-
 LIGAS_VALIDAS = [
     "Brazil", "Premier League", "La Liga", "Bundesliga",
     "Serie A", "Ligue 1", "Eredivisie", "MLS",
-    "Argentina", "Portugal", "Belgium", "Turkey", "Denmark"
+    "Argentina", "Portugal", "Belgium", "Turkey", "Denmark",
+
+    # 🔥 COMPETIÇÕES EUROPEIAS
+    "Champions League",
+    "Europa League",
+    "Conference League"
 ]
 
 jogos_enviados = set()
@@ -62,7 +64,7 @@ def pegar_stats_summary(event_id):
 def calcular_score(stats, minuto, liga):
     score = 0
 
-    # Volume (mais leve)
+    # Volume (leve)
     if stats["shots"] >= 6:
         score += 2
     if stats["shots_on_target"] >= 2:
@@ -76,13 +78,13 @@ def calcular_score(stats, minuto, liga):
     if any(l in liga for l in ["Eredivisie", "MLS", "Belgium", "Turkey"]):
         score += 1
 
-    # Momento mais flexível
+    # Momento
     if 10 <= minuto <= 40:
         score += 1
     if 50 <= minuto <= 80:
         score += 1
 
-    # 🔥 Empurrão para gerar volume
+    # Empurrão (volume)
     if stats["shots"] == 0:
         score += 1
 
@@ -107,6 +109,9 @@ def rodar_bot():
 
             for evento in data.get("events", []):
                 liga = evento.get("league", {}).get("name", "")
+
+                # DEBUG opcional (pode remover depois)
+                # print("Liga detectada:", liga)
 
                 if not any(l in liga for l in LIGAS_VALIDAS):
                     continue
@@ -142,7 +147,7 @@ def rodar_bot():
                 classificacao = classificar(score)
 
                 # DEBUG
-                print(f"{nome_casa} x {nome_fora} | Min: {minuto} | Stats: {stats} | Score: {score}")
+                print(f"{nome_casa} x {nome_fora} | {liga} | Min: {minuto} | Stats: {stats} | Score: {score}")
 
                 if not classificacao:
                     continue
@@ -153,6 +158,7 @@ def rodar_bot():
 {classificacao}
 
 ⚽ {nome_casa} x {nome_fora}
+🏆 {liga}
 ⏱️ {minuto} min
 
 📊 Finalizações: {stats['shots']}
@@ -166,7 +172,7 @@ def rodar_bot():
 
                 oportunidades.append((score, mensagem, jogo_id))
 
-            # 🔥 Aumenta volume (Top 6)
+            # 🔥 Top 6 (mais volume)
             top = sorted(oportunidades, key=lambda x: x[0], reverse=True)[:6]
 
             for score, msg, jogo_id in top:
