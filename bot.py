@@ -13,11 +13,7 @@ LIGAS_VALIDAS = [
     "Brazil", "Premier League", "La Liga", "Bundesliga",
     "Serie A", "Ligue 1", "Eredivisie", "MLS",
     "Argentina", "Portugal", "Belgium", "Turkey", "Denmark",
-
-    # 🔥 COMPETIÇÕES EUROPEIAS
-    "Champions League",
-    "Europa League",
-    "Conference League"
+    "Champions League", "Europa League", "Conference League"
 ]
 
 jogos_enviados = set()
@@ -32,7 +28,7 @@ def enviar_mensagem(texto):
     }
     requests.post(url, data=payload)
 
-# ================= STATS (SUMMARY) =================
+# ================= STATS =================
 def pegar_stats_summary(event_id):
     try:
         response = requests.get(SUMMARY_URL + event_id)
@@ -67,7 +63,7 @@ def pegar_stats_summary(event_id):
 def calcular_score(stats, minuto, liga):
     score = 0
 
-    # Volume (leve)
+    # Volume leve
     if stats["shots"] >= 6:
         score += 2
     if stats["shots_on_target"] >= 2:
@@ -87,9 +83,13 @@ def calcular_score(stats, minuto, liga):
     if 50 <= minuto <= 80:
         score += 1
 
-    # Empurrão (volume)
+    # 🔥 FORÇA SINAL MESMO SEM DADO
     if stats["shots"] == 0:
         score += 1
+
+    # 🔥 GARANTE VOLUME
+    if score == 0:
+        score = 1
 
     return score
 
@@ -97,9 +97,8 @@ def calcular_score(stats, minuto, liga):
 def classificar(score):
     if score >= 3:
         return "🔥 FORTE (Over 2.5)"
-    elif score >= 1:
+    else:
         return "🟢 TESTE (Over 1.5)"
-    return None
 
 # ================= LOOP =================
 def rodar_bot():
@@ -113,11 +112,9 @@ def rodar_bot():
             for evento in data.get("events", []):
                 liga = evento.get("league", {}).get("name", "")
 
-                # DEBUG opcional (pode remover depois)
-                # print("Liga detectada:", liga)
-
-                if not any(l in liga for l in LIGAS_VALIDAS):
-                    continue
+                # 🔥 (OPCIONAL) DESATIVAR FILTRO DE LIGA PRA TESTE TOTAL
+                # if not any(l in liga for l in LIGAS_VALIDAS):
+                #     continue
 
                 jogo_id = evento["id"]
 
@@ -131,7 +128,7 @@ def rodar_bot():
 
                 minuto = int(''.join(filter(str.isdigit, status)))
 
-                if minuto < 10:
+                if minuto < 5:
                     continue
 
                 nome_casa = evento["competitions"][0]["competitors"][0]["team"]["name"]
@@ -150,10 +147,7 @@ def rodar_bot():
                 classificacao = classificar(score)
 
                 # DEBUG
-                print(f"{nome_casa} x {nome_fora} | {liga} | Min: {minuto} | Stats: {stats} | Score: {score}")
-
-                if not classificacao:
-                    continue
+                print(f"DEBUG → {nome_casa} x {nome_fora} | Liga: {liga} | Min: {minuto} | Score: {score}")
 
                 mensagem = f"""
 <b>🧪 ENTRADA EM TESTE</b>
@@ -170,12 +164,12 @@ def rodar_bot():
 
 🧠 Score: {score}
 
-⚠️ <b>Modo observação ativo</b>
+⚠️ <b>Modo observação TOTAL</b>
 """
 
                 oportunidades.append((score, mensagem, jogo_id))
 
-            # 🔥 Top 6 (mais volume)
+            # 🔥 ENVIA MAIS SINAIS (Top 6)
             top = sorted(oportunidades, key=lambda x: x[0], reverse=True)[:6]
 
             for score, msg, jogo_id in top:
