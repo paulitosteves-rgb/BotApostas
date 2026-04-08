@@ -20,10 +20,14 @@ jogos_enviados = set()
 # ================= TELEGRAM =================
 def enviar_mensagem(texto):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": texto}
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": texto,
+        "parse_mode": "HTML"
+    }
     requests.post(url, data=payload)
 
-# ================= SUMMARY STATS =================
+# ================= STATS (SUMMARY) =================
 def pegar_stats_summary(event_id):
     try:
         response = requests.get(SUMMARY_URL + event_id)
@@ -58,34 +62,38 @@ def pegar_stats_summary(event_id):
 def calcular_score(stats, minuto, liga):
     score = 0
 
-    # Volume real
-    if stats["shots"] >= 10:
+    # Volume (mais leve)
+    if stats["shots"] >= 6:
         score += 2
-    if stats["shots_on_target"] >= 5:
-        score += 3
+    if stats["shots_on_target"] >= 2:
+        score += 2
 
-    # Pressão real
-    if stats["possession"] > 60:
+    # Pressão
+    if stats["possession"] > 55:
         score += 1
 
     # Liga ofensiva
     if any(l in liga for l in ["Eredivisie", "MLS", "Belgium", "Turkey"]):
         score += 1
 
-    # Momento ideal
-    if 20 <= minuto <= 40:
-        score += 2
-    if 55 <= minuto <= 75:
-        score += 2
+    # Momento mais flexível
+    if 10 <= minuto <= 40:
+        score += 1
+    if 50 <= minuto <= 80:
+        score += 1
+
+    # 🔥 Empurrão para gerar volume
+    if stats["shots"] == 0:
+        score += 1
 
     return score
 
 # ================= CLASSIFICAÇÃO =================
 def classificar(score):
-    if score >= 6:
+    if score >= 3:
         return "🔥 FORTE (Over 2.5)"
-    elif score >= 4:
-        return "🟢 BOM (Over 1.5)"
+    elif score >= 1:
+        return "🟢 TESTE (Over 1.5)"
     return None
 
 # ================= LOOP =================
@@ -115,28 +123,32 @@ def rodar_bot():
 
                 minuto = int(''.join(filter(str.isdigit, status)))
 
-                if minuto < 20:
+                if minuto < 10:
                     continue
 
                 nome_casa = evento["competitions"][0]["competitors"][0]["team"]["name"]
                 nome_fora = evento["competitions"][0]["competitors"][1]["team"]["name"]
 
-                # 🔥 AQUI ESTÁ O DIFERENCIAL
                 stats = pegar_stats_summary(jogo_id)
 
                 if not stats:
-                    continue
+                    stats = {
+                        "shots": 0,
+                        "shots_on_target": 0,
+                        "possession": 50
+                    }
 
                 score = calcular_score(stats, minuto, liga)
                 classificacao = classificar(score)
 
+                # DEBUG
                 print(f"{nome_casa} x {nome_fora} | Min: {minuto} | Stats: {stats} | Score: {score}")
 
                 if not classificacao:
                     continue
 
                 mensagem = f"""
-🚨 ENTRADA PREMIUM
+<b>🧪 ENTRADA EM TESTE</b>
 
 {classificacao}
 
@@ -149,20 +161,19 @@ def rodar_bot():
 
 🧠 Score: {score}
 
-💰 Entrada de valor detectada
-⚠️ Gestão: 1% a 2% da banca
+⚠️ <b>Modo observação ativo</b>
 """
 
                 oportunidades.append((score, mensagem, jogo_id))
 
-            # TOP 3
-            top = sorted(oportunidades, key=lambda x: x[0], reverse=True)[:3]
+            # 🔥 Aumenta volume (Top 6)
+            top = sorted(oportunidades, key=lambda x: x[0], reverse=True)[:6]
 
             for score, msg, jogo_id in top:
                 enviar_mensagem(msg)
                 jogos_enviados.add(jogo_id)
 
-            print(f"🔁 Loop executado - {len(top)} sinais PREMIUM enviados")
+            print(f"🔁 Loop executado - {len(top)} sinais enviados")
 
         except Exception as e:
             print("Erro:", e)
