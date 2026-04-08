@@ -1,170 +1,173 @@
 import requests
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-# ==============================
-# CONFIG
-# ==============================
+# ================= CONFIG =================
 TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "7729625060"
 
-# ==============================
-# CONTROLE DE ENVIO
-# ==============================
+URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
+
+LIGAS_VALIDAS = [
+    "Brazil", "Premier League", "La Liga", "Bundesliga",
+    "Serie A", "Ligue 1", "Eredivisie", "MLS",
+    "Argentina", "Portugal", "Belgium", "Turkey", "Denmark"
+]
+
 jogos_enviados = set()
 
-# ==============================
-# TELEGRAM
-# ==============================
-def enviar(msg):
+# ================= TELEGRAM =================
+def enviar_mensagem(texto):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": texto}
+    requests.post(url, data=payload)
+
+# ================= SCORE INTELIGENTE =================
+def calcular_score(stats, minuto, liga):
+    score = 0
+
+    shots = stats.get("shots", 0)
+    shots_on_target = stats.get("shots_on_target", 0)
+    possession = stats.get("possession", 50)
+
+    # Volume de jogo
+    if shots >= 10:
+        score += 2
+    if shots_on_target >= 5:
+        score += 2
+
+    # Pressão
+    if possession > 55:
+        score += 1
+
+    # Liga ofensiva
+    if liga in ["Eredivisie", "MLS", "Belgium", "Turkey"]:
+        score += 1
+
+    # Momento do jogo
+    if 20 <= minuto <= 35:
+        score += 1
+    if 55 <= minuto <= 70:
+        score += 2
+
+    return score
+
+# ================= CLASSIFICAÇÃO =================
+def classificar(score):
+    if score >= 6:
+        return "🔥 FORTE (Over 2.5)"
+    elif score >= 4:
+        return "🟢 BOM (Over 1.5)"
+    else:
+        return None
+
+# ================= EXTRAÇÃO DE STATS =================
+def extrair_stats(evento):
     try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        requests.post(url, json={"chat_id": CHAT_ID, "text": msg}, timeout=5)
-    except Exception as e:
-        print("Erro Telegram:", e)
+        competitors = evento["competitions"][0]["competitors"]
 
-# ==============================
-# BUSCAR JOGOS (ESPN)
-# ==============================
-def buscar_jogos():
-    print("🔍 Buscando jogos ESPN...")
+        stats_home = competitors[0].get("statistics", [])
+        stats_away = competitors[1].get("statistics", [])
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+        def get_stat(stats, nome):
+            for s in stats:
+                if s["name"] == nome:
+                    return float(s["displayValue"])
+            return 0
 
-    try:
-        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
-        res = requests.get(url, headers=headers, timeout=5)
+        shots = get_stat(stats_home, "shotsTotal") + get_stat(stats_away, "shotsTotal")
+        shots_on_target = get_stat(stats_home, "shotsOnTarget") + get_stat(stats_away, "shotsOnTarget")
 
-        print("Status ESPN:", res.status_code)
+        possession_home = get_stat(stats_home, "possession")
+        possession_away = get_stat(stats_away, "possession")
 
-        if res.status_code != 200:
-            raise Exception("Erro na API")
+        possession = max(possession_home, possession_away)
 
-        data = res.json()
-        jogos = []
+        return {
+            "shots": shots,
+            "shots_on_target": shots_on_target,
+            "possession": possession
+        }
+    except:
+        return {}
 
-        for event in data.get("events", []):
+# ================= LOOP PRINCIPAL =================
+def rodar_bot():
+    while True:
+        try:
+            response = requests.get(URL)
+            data = response.json()
 
-            competitions = event.get("competitions", [])
-            if not competitions:
-                continue
+            oportunidades = []
 
-            teams = competitions[0].get("competitors", [])
-            if len(teams) < 2:
-                continue
+            for evento in data.get("events", []):
+                liga = evento.get("league", {}).get("name", "")
 
-            home = teams[0]["team"]["name"]
-            away = teams[1]["team"]["name"]
+                if not any(l in liga for l in LIGAS_VALIDAS):
+                    continue
 
-            # ==============================
-            # HORÁRIO BR
-            # ==============================
-            data_str = event.get("date", "")
+                jogo_id = evento["id"]
 
-            if data_str:
-                data_utc = datetime.fromisoformat(data_str.replace("Z", "+00:00"))
-                data_br = data_utc.astimezone(timezone(timedelta(hours=-3)))
-                hora = data_br.strftime("%H:%M")
-            else:
-                hora = "??:??"
+                if jogo_id in jogos_enviados:
+                    continue
 
-            jogo_id = f"{home} x {away}"
+                status = evento["status"]["type"]["detail"]
 
-            jogos.append((jogo_id, home, away, hora))
+                if "min" not in status:
+                    continue
 
-        return jogos
+                minuto = int(''.join(filter(str.isdigit, status)))
 
-    except Exception as e:
-        print("⚠️ erro ESPN:", e)
+                # Filtro de tempo
+                if minuto < 20:
+                    continue
 
-    return []
+                nome_casa = evento["competitions"][0]["competitors"][0]["team"]["name"]
+                nome_fora = evento["competitions"][0]["competitors"][1]["team"]["name"]
 
-# ==============================
-# ANÁLISE (ESTRATÉGIA)
-# ==============================
-def analisar():
+                stats = extrair_stats(evento)
 
-    jogos = buscar_jogos()
-    entradas = []
+                if not stats:
+                    continue
 
-    times_grandes = [
-        "Barcelona", "Real Madrid", "Manchester City", "Liverpool",
-        "Bayern Munich", "PSG", "Arsenal", "Chelsea",
-        "Juventus", "Inter", "Milan",
-        "Flamengo", "Palmeiras", "Atlético-MG"
-    ]
+                score = calcular_score(stats, minuto, liga)
+                classificacao = classificar(score)
 
-    for jogo_id, home, away, hora in jogos:
+                if not classificacao:
+                    continue
 
-        # evitar repetição
-        if jogo_id in jogos_enviados:
-            continue
+                mensagem = f"""
+🚨 ENTRADA LIBERADA
 
-        home_grande = any(t in home for t in times_grandes)
-        away_grande = any(t in away for t in times_grandes)
+{classificacao}
 
-        # 🔵 OVER 2.5 (FORTE)
-        if home_grande and away_grande:
-            msg = f"""🔥 OVER 2.5 (FORTE)
+⚽ {nome_casa} x {nome_fora}
+⏱️ {minuto} min
 
-{home} x {away}
-🕒 {hora}
+📊 Finalizações: {stats['shots']}
+🎯 No gol: {stats['shots_on_target']}
+📈 Posse: {stats['possession']}%
 
-📊 Duas equipes com perfil ofensivo
-📈 Forte tendência de gols
+🧠 Score: {score}
 
-💰 Sugestão: entrada simples
-⚠️ Gestão: até 2% da banca
+💰 Gestão: 1% a 2% da banca
 """
 
-        # 🟢 OVER 1.5 (BOM)
-        elif home_grande or away_grande:
-            msg = f"""🟢 OVER 1.5 (BOM)
+                oportunidades.append((score, mensagem, jogo_id))
 
-{home} x {away}
-🕒 {hora}
+            # ================= TOP 3 =================
+            top = sorted(oportunidades, key=lambda x: x[0], reverse=True)[:3]
 
-📊 Cenário propício para pelo menos 2 gols
-📈 Tendência ofensiva consistente
+            for score, msg, jogo_id in top:
+                enviar_mensagem(msg)
+                jogos_enviados.add(jogo_id)
 
-💰 Sugestão: múltiplas ou entrada conservadora
-⚠️ Gestão: 1 a 2% da banca
-"""
+            print(f"🔁 Loop executado - {len(top)} sinais enviados")
 
-        else:
-            continue
+        except Exception as e:
+            print("Erro:", e)
 
-        entradas.append((jogo_id, msg))
+        time.sleep(600)
 
-    return entradas
-
-# ==============================
-# LOOP PRINCIPAL
-# ==============================
-print("🚀 BOT INICIADO (MODO TIPSTER FINAL)")
-
-while True:
-    try:
-        entradas = analisar()
-
-        if not entradas:
-            print("🔁 Sem oportunidades")
-            time.sleep(600)
-            continue
-
-        for jogo_id, msg in entradas:
-
-            print(f"📤 Enviando: {jogo_id}")
-
-            enviar(f"🚨 ENTRADA LIBERADA\n\n{msg}")
-
-            jogos_enviados.add(jogo_id)
-
-            time.sleep(2)
-
-    except Exception as e:
-        print("💥 ERRO LOOP:", e)
-
-    time.sleep(600)
+# ================= START =================
+rodar_bot()
