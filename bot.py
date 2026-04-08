@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 # ================= CONFIG =================
 TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
-CHAT_ID = "7729625060"
+CHAT_ID = "@Over_golsPV"
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/summary?event="
