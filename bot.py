@@ -22,18 +22,18 @@ def enviar_mensagem(texto):
     payload = {"chat_id": CHAT_ID, "text": texto}
     requests.post(url, data=payload)
 
-# ================= SCORE INTELIGENTE =================
+# ================= SCORE =================
 def calcular_score(stats, minuto, liga):
     score = 0
 
-    shots = stats.get("shots", 0)
-    shots_on_target = stats.get("shots_on_target", 0)
-    possession = stats.get("possession", 50)
+    shots = stats["shots"]
+    shots_on_target = stats["shots_on_target"]
+    possession = stats["possession"]
 
-    # Volume de jogo
-    if shots >= 10:
+    # Volume
+    if shots >= 8:
         score += 2
-    if shots_on_target >= 5:
+    if shots_on_target >= 3:
         score += 2
 
     # Pressão
@@ -41,27 +41,26 @@ def calcular_score(stats, minuto, liga):
         score += 1
 
     # Liga ofensiva
-    if liga in ["Eredivisie", "MLS", "Belgium", "Turkey"]:
+    if any(l in liga for l in ["Eredivisie", "MLS", "Belgium", "Turkey"]):
         score += 1
 
-    # Momento do jogo
-    if 20 <= minuto <= 35:
+    # Momento
+    if 15 <= minuto <= 35:
         score += 1
-    if 55 <= minuto <= 70:
+    if 55 <= minuto <= 75:
         score += 2
 
     return score
 
 # ================= CLASSIFICAÇÃO =================
 def classificar(score):
-    if score >= 6:
+    if score >= 4:
         return "🔥 FORTE (Over 2.5)"
-    elif score >= 4:
+    elif score >= 2:
         return "🟢 BOM (Over 1.5)"
-    else:
-        return None
+    return None
 
-# ================= EXTRAÇÃO DE STATS =================
+# ================= STATS =================
 def extrair_stats(evento):
     try:
         competitors = evento["competitions"][0]["competitors"]
@@ -88,10 +87,11 @@ def extrair_stats(evento):
             "shots_on_target": shots_on_target,
             "possession": possession
         }
-    except:
-        return {}
 
-# ================= LOOP PRINCIPAL =================
+    except:
+        return None
+
+# ================= LOOP =================
 def rodar_bot():
     while True:
         try:
@@ -118,8 +118,7 @@ def rodar_bot():
 
                 minuto = int(''.join(filter(str.isdigit, status)))
 
-                # Filtro de tempo
-                if minuto < 20:
+                if minuto < 15:
                     continue
 
                 nome_casa = evento["competitions"][0]["competitors"][0]["team"]["name"]
@@ -127,11 +126,19 @@ def rodar_bot():
 
                 stats = extrair_stats(evento)
 
+                # 🔥 fallback (não ignora jogo)
                 if not stats:
-                    continue
+                    stats = {
+                        "shots": 0,
+                        "shots_on_target": 0,
+                        "possession": 50
+                    }
 
                 score = calcular_score(stats, minuto, liga)
                 classificacao = classificar(score)
+
+                # DEBUG
+                print(f"{nome_casa} x {nome_fora} | Min: {minuto} | Stats: {stats} | Score: {score}")
 
                 if not classificacao:
                     continue
@@ -155,7 +162,7 @@ def rodar_bot():
 
                 oportunidades.append((score, mensagem, jogo_id))
 
-            # ================= TOP 3 =================
+            # TOP 3
             top = sorted(oportunidades, key=lambda x: x[0], reverse=True)[:3]
 
             for score, msg, jogo_id in top:
