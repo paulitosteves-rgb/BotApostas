@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "@Over_golsPV"
 
+SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
+SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/summary?event="
+
 LIGAS_VALIDAS = [
     "Brazil", "Premier League", "La Liga", "Bundesliga",
     "Serie A", "Ligue 1", "Eredivisie", "MLS",
