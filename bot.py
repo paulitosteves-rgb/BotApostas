@@ -6,41 +6,39 @@ from datetime import datetime, timedelta
 TOKEN = "8686967499:AAGDgl9xyuvstuZj1n_cuUlSeQGtZKd4N8M"
 CHAT_ID = "@Over_golsPV"
 
-SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
+URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
 
 jogos_enviados = set()
 
 # ================= TELEGRAM =================
-def enviar_mensagem(texto):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": texto}
-    requests.post(url, data=payload)
+def enviar(msg):
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
 
 # ================= HISTÓRICO =================
-def pegar_historico_time(team_id):
+def historico(team_id):
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
-        response = requests.get(url)
-        data = response.json()
+        data = requests.get(url).json()
 
         jogos = data.get("events", [])[:10]
 
-        gols_marcados = 0
-        gols_sofridos = 0
-        total = 0
+        gm, gs, total = 0, 0, 0
 
-        for jogo in jogos:
+        for j in jogos:
             try:
-                comps = jogo["competitions"][0]["competitors"]
+                comps = j["competitions"][0]["competitors"]
 
                 if not comps[0].get("score") or not comps[1].get("score"):
                     continue
 
                 for t in comps:
                     if t["team"]["id"] == team_id:
-                        gols_marcados += int(t["score"])
+                        gm += int(t["score"])
                     else:
-                        gols_sofridos += int(t["score"])
+                        gs += int(t["score"])
 
                 total += 1
             except:
@@ -49,99 +47,116 @@ def pegar_historico_time(team_id):
         if total == 0:
             return None
 
-        return gols_marcados / total, gols_sofridos / total
+        return gm/total, gs/total
 
     except:
         return None
 
-# ================= CLASSIFICAÇÃO =================
-def classificar(potencial):
-    if potencial >= 3.2:
-        return "🔥 FORTE", "Over 2.5"
-    elif potencial >= 2.2:
-        return "🟢 BOM", "Over 1.5"
-    return None, None
-
 # ================= LOOP =================
-def rodar_bot():
+def rodar():
     while True:
         try:
-            response = requests.get(SCOREBOARD_URL)
-            data = response.json()
+            data = requests.get(URL).json()
 
-            for evento in data.get("events", []):
-                jogo_id = evento["id"]
+            candidatos = []
 
-                casa = evento["competitions"][0]["competitors"][0]
-                fora = evento["competitions"][0]["competitors"][1]
+            for e in data.get("events", []):
+                id_jogo = e["id"]
 
-                nome_casa = casa["team"]["name"]
-                nome_fora = fora["team"]["name"]
+                if id_jogo in jogos_enviados:
+                    continue
 
-                status = evento["status"]["type"]["description"]
+                status = e["status"]["type"]["description"]
 
                 if "Scheduled" not in status and "Not Started" not in status:
                     continue
 
-                if jogo_id in jogos_enviados:
-                    continue
+                casa = e["competitions"][0]["competitors"][0]
+                fora = e["competitions"][0]["competitors"][1]
 
-                liga = evento.get("league", {}).get("name", "")
+                nome_casa = casa["team"]["name"]
+                nome_fora = fora["team"]["name"]
 
                 id_casa = casa["team"]["id"]
                 id_fora = fora["team"]["id"]
 
-                hist_casa = pegar_historico_time(id_casa)
-                hist_fora = pegar_historico_time(id_fora)
+                hist_c = historico(id_casa)
+                hist_f = historico(id_fora)
 
-                # fallback leve (evita travar)
-                if not hist_casa or not hist_fora:
-                    gm_casa, gs_casa = 1.2, 1.2
-                    gm_fora, gs_fora = 1.2, 1.2
-                else:
-                    gm_casa, gs_casa = hist_casa
-                    gm_fora, gs_fora = hist_fora
+                if not hist_c or not hist_f:
+                    continue  # 🔥 agora ignoramos lixo
 
-                # cálculo inteligente
-                potencial = (gm_casa + gs_fora) + (gm_fora + gs_casa)
+                gm_c, gs_c = hist_c
+                gm_f, gs_f = hist_f
 
-                classificacao, mercado = classificar(potencial)
+                # 🔥 cálculo refinado
+                ataque = (gm_c + gm_f) / 2
+                defesa = (gs_c + gs_f) / 2
 
-                if not classificacao:
+                potencial = (gm_c + gs_f) + (gm_f + gs_c)
+
+                prob = min(int((potencial / 4) * 100), 95)
+
+                if prob < 60 or potencial < 2.2:
                     continue
 
-                # 🔥 probabilidade estimada
-                probabilidade = min(int((potencial / 4) * 100), 95)
+                odd_justa = round(100 / prob, 2)
 
-                mensagem = f"""
-🚨 ENTRADA PRÉ-JOGO
+                # 🔥 EV+ simples (simulação mercado)
+                odd_minima = 1.30 if potencial >= 3 else 1.20
 
-{classificacao} — {mercado}
-📊 Probabilidade: {probabilidade}%
+                if odd_justa > odd_minima:
+                    continue  # sem valor
 
-⚽ {nome_casa} x {nome_fora}
-🏆 {liga}
+                mercado = "Over 2.5" if potencial >= 3.2 else "Over 1.5"
 
-📈 Ataque Casa: {gm_casa:.2f}
-📉 Defesa Fora: {gs_fora:.2f}
+                candidatos.append({
+                    "jogo": f"{nome_casa} x {nome_fora}",
+                    "liga": e.get("league", {}).get("name", ""),
+                    "prob": prob,
+                    "pot": potencial,
+                    "mercado": mercado
+                })
 
-📈 Ataque Fora: {gm_fora:.2f}
-📉 Defesa Casa: {gs_casa:.2f}
+            # ================= TOP 5 =================
+            top = sorted(candidatos, key=lambda x: x["prob"], reverse=True)[:5]
 
-🧠 Potencial: {potencial:.2f}
+            for j in top:
+                msg = f"""
+🚨 TOP ENTRADA
 
-💰 Gestão: 1% a 2%
+🔥 {j['mercado']}
+📊 Prob: {j['prob']}%
+
+⚽ {j['jogo']}
+🏆 {j['liga']}
+
+🧠 Potencial: {j['pot']:.2f}
 """
+                enviar(msg)
+                jogos_enviados.add(j["jogo"])
 
-                enviar_mensagem(mensagem)
-                jogos_enviados.add(jogo_id)
+            # ================= MÚLTIPLA =================
+            if len(top) >= 3:
+                odd_total = 1
 
-                print(f"ENVIADO → {nome_casa} x {nome_fora} | {mercado} | {probabilidade}%")
+                texto = "🔥 MÚLTIPLA DO DIA\n\n"
+
+                for j in top[:3]:
+                    odd_est = 1.25 if j["mercado"] == "Over 1.5" else 1.50
+                    odd_total *= odd_est
+
+                    texto += f"{j['jogo']} — {j['mercado']}\n"
+
+                texto += f"\n💰 Odd estimada: {odd_total:.2f}"
+
+                enviar(texto)
+
+            print(f"Loop OK - {len(top)} sinais")
 
         except Exception as e:
             print("Erro:", e)
 
         time.sleep(600)
 
-# ================= START =================
-rodar_bot()
+rodar()
