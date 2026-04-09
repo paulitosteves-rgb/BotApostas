@@ -10,11 +10,13 @@ SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/score
 
 jogos_enviados = set()
 
+# ================= TELEGRAM =================
 def enviar_mensagem(texto):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": texto}
     requests.post(url, data=payload)
 
+# ================= HISTÓRICO =================
 def pegar_historico_time(team_id):
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
@@ -52,13 +54,15 @@ def pegar_historico_time(team_id):
     except:
         return None
 
+# ================= CLASSIFICAÇÃO =================
 def classificar(potencial):
-    if potencial >= 3:
-        return "🔥 FORTE (Over 2.5)"
-    elif potencial >= 2:
-        return "🟢 BOM (Over 1.5)"
-    return None
+    if potencial >= 3.2:
+        return "🔥 FORTE", "Over 2.5"
+    elif potencial >= 2.2:
+        return "🟢 BOM", "Over 1.5"
+    return None, None
 
+# ================= LOOP =================
 def rodar_bot():
     while True:
         try:
@@ -76,8 +80,6 @@ def rodar_bot():
 
                 status = evento["status"]["type"]["description"]
 
-                print(f"DEBUG JOGO → {nome_casa} x {nome_fora} | Status: {status}")
-
                 if "Scheduled" not in status and "Not Started" not in status:
                     continue
 
@@ -92,42 +94,54 @@ def rodar_bot():
                 hist_casa = pegar_historico_time(id_casa)
                 hist_fora = pegar_historico_time(id_fora)
 
-                print(f"HIST → {nome_casa}: {hist_casa} | {nome_fora}: {hist_fora}")
-
-                # 🔥 fallback para garantir funcionamento
+                # fallback leve (evita travar)
                 if not hist_casa or not hist_fora:
-                    gm_casa, gs_casa = 1, 1
-                    gm_fora, gs_fora = 1, 1
+                    gm_casa, gs_casa = 1.2, 1.2
+                    gm_fora, gs_fora = 1.2, 1.2
                 else:
                     gm_casa, gs_casa = hist_casa
                     gm_fora, gs_fora = hist_fora
 
+                # cálculo inteligente
                 potencial = (gm_casa + gs_fora) + (gm_fora + gs_casa)
 
-                print(f"POTENCIAL → {potencial:.2f}")
-
-                classificacao = classificar(potencial)
+                classificacao, mercado = classificar(potencial)
 
                 if not classificacao:
                     continue
 
+                # 🔥 probabilidade estimada
+                probabilidade = min(int((potencial / 4) * 100), 95)
+
                 mensagem = f"""
 🚨 ENTRADA PRÉ-JOGO
 
-{classificacao}
+{classificacao} — {mercado}
+📊 Probabilidade: {probabilidade}%
 
 ⚽ {nome_casa} x {nome_fora}
 🏆 {liga}
 
+📈 Ataque Casa: {gm_casa:.2f}
+📉 Defesa Fora: {gs_fora:.2f}
+
+📈 Ataque Fora: {gm_fora:.2f}
+📉 Defesa Casa: {gs_casa:.2f}
+
 🧠 Potencial: {potencial:.2f}
+
+💰 Gestão: 1% a 2%
 """
 
                 enviar_mensagem(mensagem)
                 jogos_enviados.add(jogo_id)
+
+                print(f"ENVIADO → {nome_casa} x {nome_fora} | {mercado} | {probabilidade}%")
 
         except Exception as e:
             print("Erro:", e)
 
         time.sleep(600)
 
+# ================= START =================
 rodar_bot()
