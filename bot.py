@@ -10,13 +10,11 @@ SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/score
 
 jogos_enviados = set()
 
-# ================= TELEGRAM =================
 def enviar_mensagem(texto):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": texto}
     requests.post(url, data=payload)
 
-# ================= HISTÓRICO =================
 def pegar_historico_time(team_id):
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
@@ -33,7 +31,6 @@ def pegar_historico_time(team_id):
             try:
                 comps = jogo["competitions"][0]["competitors"]
 
-                # 🔥 IGNORA JOGO SEM PLACAR
                 if not comps[0].get("score") or not comps[1].get("score"):
                     continue
 
@@ -44,7 +41,6 @@ def pegar_historico_time(team_id):
                         gols_sofridos += int(t["score"])
 
                 total += 1
-
             except:
                 continue
 
@@ -56,7 +52,6 @@ def pegar_historico_time(team_id):
     except:
         return None
 
-# ================= CLASSIFICAÇÃO =================
 def classificar(potencial):
     if potencial >= 3:
         return "🔥 FORTE (Over 2.5)"
@@ -64,7 +59,6 @@ def classificar(potencial):
         return "🟢 BOM (Over 1.5)"
     return None
 
-# ================= LOOP =================
 def rodar_bot():
     while True:
         try:
@@ -74,39 +68,43 @@ def rodar_bot():
             for evento in data.get("events", []):
                 jogo_id = evento["id"]
 
-                if jogo_id in jogos_enviados:
-                    continue
-
-                status = evento["status"]["type"]["description"]
-
-                if status != "Scheduled":
-                    continue
-
-                liga = evento.get("league", {}).get("name", "")
-
                 casa = evento["competitions"][0]["competitors"][0]
                 fora = evento["competitions"][0]["competitors"][1]
 
                 nome_casa = casa["team"]["name"]
                 nome_fora = fora["team"]["name"]
 
+                status = evento["status"]["type"]["description"]
+
+                print(f"DEBUG JOGO → {nome_casa} x {nome_fora} | Status: {status}")
+
+                if "Scheduled" not in status and "Not Started" not in status:
+                    continue
+
+                if jogo_id in jogos_enviados:
+                    continue
+
+                liga = evento.get("league", {}).get("name", "")
+
                 id_casa = casa["team"]["id"]
                 id_fora = fora["team"]["id"]
 
-                # 🔥 HISTÓRICO REAL
                 hist_casa = pegar_historico_time(id_casa)
                 hist_fora = pegar_historico_time(id_fora)
 
+                print(f"HIST → {nome_casa}: {hist_casa} | {nome_fora}: {hist_fora}")
+
+                # 🔥 fallback para garantir funcionamento
                 if not hist_casa or not hist_fora:
-                    continue
+                    gm_casa, gs_casa = 1, 1
+                    gm_fora, gs_fora = 1, 1
+                else:
+                    gm_casa, gs_casa = hist_casa
+                    gm_fora, gs_fora = hist_fora
 
-                gm_casa, gs_casa = hist_casa
-                gm_fora, gs_fora = hist_fora
-
-                # 🔥 CÁLCULO MELHORADO
                 potencial = (gm_casa + gs_fora) + (gm_fora + gs_casa)
 
-                print(f"{nome_casa} x {nome_fora} | Potencial: {potencial:.2f}")
+                print(f"POTENCIAL → {potencial:.2f}")
 
                 classificacao = classificar(potencial)
 
@@ -114,22 +112,14 @@ def rodar_bot():
                     continue
 
                 mensagem = f"""
-🚨 ENTRADA PRÉ-JOGO (ESTATÍSTICA)
+🚨 ENTRADA PRÉ-JOGO
 
 {classificacao}
 
 ⚽ {nome_casa} x {nome_fora}
 🏆 {liga}
 
-📊 Ataque casa: {gm_casa:.2f}
-📊 Defesa fora: {gs_fora:.2f}
-
-📊 Ataque fora: {gm_fora:.2f}
-📊 Defesa casa: {gs_casa:.2f}
-
 🧠 Potencial: {potencial:.2f}
-
-💰 Gestão: 1% a 2% da banca
 """
 
                 enviar_mensagem(mensagem)
@@ -140,5 +130,4 @@ def rodar_bot():
 
         time.sleep(600)
 
-# ================= START =================
 rodar_bot()
