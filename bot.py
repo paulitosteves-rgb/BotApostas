@@ -23,7 +23,7 @@ def pegar_historico_time(team_id):
         response = requests.get(url)
         data = response.json()
 
-        jogos = data.get("events", [])[:5]
+        jogos = data.get("events", [])[:10]
 
         gols_marcados = 0
         gols_sofridos = 0
@@ -33,6 +33,10 @@ def pegar_historico_time(team_id):
             try:
                 comps = jogo["competitions"][0]["competitors"]
 
+                # 🔥 IGNORA JOGO SEM PLACAR
+                if not comps[0].get("score") or not comps[1].get("score"):
+                    continue
+
                 for t in comps:
                     if t["team"]["id"] == team_id:
                         gols_marcados += int(t["score"])
@@ -40,25 +44,25 @@ def pegar_historico_time(team_id):
                         gols_sofridos += int(t["score"])
 
                 total += 1
+
             except:
                 continue
 
         if total == 0:
-            return 0, 0
+            return None
 
         return gols_marcados / total, gols_sofridos / total
 
     except:
-        return 0, 0
+        return None
 
 # ================= CLASSIFICAÇÃO =================
-def classificar(gols_total):
-    if gols_total >= 3:
+def classificar(potencial):
+    if potencial >= 3:
         return "🔥 FORTE (Over 2.5)"
-    elif gols_total >= 2:
+    elif potencial >= 2:
         return "🟢 BOM (Over 1.5)"
-    else:
-        return None
+    return None
 
 # ================= LOOP =================
 def rodar_bot():
@@ -89,16 +93,22 @@ def rodar_bot():
                 id_casa = casa["team"]["id"]
                 id_fora = fora["team"]["id"]
 
-                # 🔥 pega histórico real
-                gm_casa, gs_casa = pegar_historico_time(id_casa)
-                gm_fora, gs_fora = pegar_historico_time(id_fora)
+                # 🔥 HISTÓRICO REAL
+                hist_casa = pegar_historico_time(id_casa)
+                hist_fora = pegar_historico_time(id_fora)
 
-                # 🔥 cálculo de potencial
-                potencial = gm_casa + gm_fora + gs_casa + gs_fora
+                if not hist_casa or not hist_fora:
+                    continue
 
-                classificacao = classificar(potencial)
+                gm_casa, gs_casa = hist_casa
+                gm_fora, gs_fora = hist_fora
+
+                # 🔥 CÁLCULO MELHORADO
+                potencial = (gm_casa + gs_fora) + (gm_fora + gs_casa)
 
                 print(f"{nome_casa} x {nome_fora} | Potencial: {potencial:.2f}")
+
+                classificacao = classificar(potencial)
 
                 if not classificacao:
                     continue
@@ -111,13 +121,13 @@ def rodar_bot():
 ⚽ {nome_casa} x {nome_fora}
 🏆 {liga}
 
-📊 Média gols casa: {gm_casa:.2f}
-📊 Média gols fora: {gm_fora:.2f}
+📊 Ataque casa: {gm_casa:.2f}
+📊 Defesa fora: {gs_fora:.2f}
 
-📉 Sofridos casa: {gs_casa:.2f}
-📉 Sofridos fora: {gs_fora:.2f}
+📊 Ataque fora: {gm_fora:.2f}
+📊 Defesa casa: {gs_casa:.2f}
 
-🧠 Potencial total: {potencial:.2f}
+🧠 Potencial: {potencial:.2f}
 
 💰 Gestão: 1% a 2% da banca
 """
