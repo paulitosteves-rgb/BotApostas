@@ -74,27 +74,29 @@ def rodar():
                 hist_c = historico(casa["team"]["id"])
                 hist_f = historico(fora["team"]["id"])
 
+                # 🔥 fallback inteligente
                 if not hist_c or not hist_f:
-                    continue
-
-                gm_c, gs_c = hist_c
-                gm_f, gs_f = hist_f
+                    gm_c, gs_c = 1.3, 1.3
+                    gm_f, gs_f = 1.3, 1.3
+                else:
+                    gm_c, gs_c = hist_c
+                    gm_f, gs_f = hist_f
 
                 potencial = (gm_c + gs_f) + (gm_f + gs_c)
                 prob = min(int((potencial / 4) * 100), 95)
 
-                if prob < 60:
+                # 🔥 mais leve
+                if prob < 55:
                     continue
 
-                # 🔥 NOVA REGRA
-                if potencial >= 3.6:
+                # 🔥 equilíbrio real
+                if potencial >= 3.4:
                     mercado = "🔥 Over 2.5"
-                elif potencial >= 2.4:
+                elif potencial >= 2.1:
                     mercado = "🟢 Over 1.5"
                 else:
                     continue
 
-                # ⏰ horário
                 hora = datetime.fromisoformat(e["date"].replace("Z", ""))
                 hora_formatada = hora.strftime("%H:%M")
 
@@ -108,8 +110,13 @@ def rodar():
                     "id": id_jogo
                 })
 
-            # 🔥 LIMITA TOP 5
-            top = sorted(candidatos, key=lambda x: x["prob"], reverse=True)[:5]
+            # 🔥 controle de volume inteligente
+            candidatos_ordenados = sorted(candidatos, key=lambda x: x["prob"], reverse=True)
+
+            if len(candidatos_ordenados) < 3:
+                top = sorted(candidatos, key=lambda x: x["pot"], reverse=True)[:3]
+            else:
+                top = candidatos_ordenados[:5]
 
             for j in top:
                 msg = f"""
