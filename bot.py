@@ -74,7 +74,6 @@ def rodar():
                 hist_c = historico(casa["team"]["id"])
                 hist_f = historico(fora["team"]["id"])
 
-                # 🔥 fallback inteligente
                 if not hist_c or not hist_f:
                     gm_c, gs_c = 1.3, 1.3
                     gm_f, gs_f = 1.3, 1.3
@@ -82,23 +81,27 @@ def rodar():
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
 
-                potencial = (gm_c + gs_f) + (gm_f + gs_c)
-                prob = min(int((potencial / 4) * 100), 95)
+                # 🔥 NOVO CÁLCULO NORMALIZADO
+                potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
 
-                # 🔥 mais leve
+                # 🔥 NOVA PROBABILIDADE
+                prob = min(int((potencial / 3.5) * 100), 95)
+
                 if prob < 55:
                     continue
 
-                # 🔥 equilíbrio real
-                if potencial >= 3.4:
+                # 🔥 NOVAS FAIXAS
+                if potencial >= 3.0:
                     mercado = "🔥 Over 2.5"
-                elif potencial >= 2.1:
+                elif potencial >= 2.0:
                     mercado = "🟢 Over 1.5"
                 else:
                     continue
 
-                hora = datetime.fromisoformat(e["date"].replace("Z", ""))
-                hora_formatada = hora.strftime("%H:%M")
+                # 🔥 CORREÇÃO DE HORÁRIO (BRASIL)
+                hora_utc = datetime.fromisoformat(e["date"].replace("Z", ""))
+                hora_br = hora_utc - timedelta(hours=3)
+                hora_formatada = hora_br.strftime("%H:%M")
 
                 candidatos.append({
                     "jogo": f"{nome_casa} x {nome_fora}",
@@ -110,13 +113,7 @@ def rodar():
                     "id": id_jogo
                 })
 
-            # 🔥 controle de volume inteligente
-            candidatos_ordenados = sorted(candidatos, key=lambda x: x["prob"], reverse=True)
-
-            if len(candidatos_ordenados) < 3:
-                top = sorted(candidatos, key=lambda x: x["pot"], reverse=True)[:3]
-            else:
-                top = candidatos_ordenados[:5]
+            top = sorted(candidatos, key=lambda x: x["prob"], reverse=True)[:5]
 
             for j in top:
                 msg = f"""
