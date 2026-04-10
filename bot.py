@@ -16,6 +16,35 @@ def enviar(msg):
         "text": msg
     })
 
+# 🔥 FILTRO DE LIGA
+def liga_valida(nome_liga):
+    nome = nome_liga.lower()
+
+    bloqueadas = ["friendly", "amistoso", "u20", "u17", "women", "feminino", "reserve", "youth"]
+    for b in bloqueadas:
+        if b in nome:
+            return False
+
+    ligas_boas = [
+        "champions",
+        "europa league",
+        "conference",
+        "premier league",
+        "la liga",
+        "serie a",
+        "bundesliga",
+        "ligue 1",
+        "brasil",
+        "libertadores",
+        "sudamericana"
+    ]
+
+    for l in ligas_boas:
+        if l in nome:
+            return True
+
+    return False
+
 def historico(team_id):
     try:
         data = requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule").json()
@@ -60,6 +89,12 @@ def rodar():
                 if "Scheduled" not in status and "Not Started" not in status:
                     continue
 
+                liga = e.get("league", {}).get("name", "")
+
+                # 🔥 FILTRO AQUI
+                if not liga_valida(liga):
+                    continue
+
                 casa = e["competitions"][0]["competitors"][0]
                 fora = e["competitions"][0]["competitors"][1]
 
@@ -81,16 +116,12 @@ def rodar():
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
 
-                # 🔥 NOVO CÁLCULO NORMALIZADO
                 potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
-
-                # 🔥 NOVA PROBABILIDADE
                 prob = min(int((potencial / 3.5) * 100), 95)
 
                 if prob < 55:
                     continue
 
-                # 🔥 NOVAS FAIXAS
                 if potencial >= 3.0:
                     mercado = "🔥 Over 2.5"
                 elif potencial >= 2.0:
@@ -98,14 +129,13 @@ def rodar():
                 else:
                     continue
 
-                # 🔥 CORREÇÃO DE HORÁRIO (BRASIL)
                 hora_utc = datetime.fromisoformat(e["date"].replace("Z", ""))
                 hora_br = hora_utc - timedelta(hours=3)
                 hora_formatada = hora_br.strftime("%H:%M")
 
                 candidatos.append({
                     "jogo": f"{nome_casa} x {nome_fora}",
-                    "liga": e.get("league", {}).get("name", ""),
+                    "liga": liga,
                     "prob": prob,
                     "pot": potencial,
                     "mercado": mercado,
