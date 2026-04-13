@@ -16,13 +16,12 @@ def enviar(msg):
         "text": msg
     })
 
-# 🔥 TEMPORÁRIO (liberado total)
-def liga_valida(nome_liga):
-    return True
-
 def historico(team_id):
     try:
-        data = requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule").json()
+        data = requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
+        ).json()
+
         jogos = data.get("events", [])[:10]
 
         gm, gs, total = 0, 0, 0
@@ -56,9 +55,6 @@ def rodar():
     while True:
         try:
             data = requests.get(URL).json()
-
-            print(f"TOTAL JOGOS API: {len(data.get('events', []))}")
-
             candidatos = []
 
             for e in data.get("events", []):
@@ -79,12 +75,14 @@ def rodar():
                     continue
 
                 hist_c = historico(casa["team"]["id"])
-                hist_f = historico(fora["team"]["id"])
+                hist_f = historico(fora["team"]["id"])  # ✅ corrigido
 
-                # 🔥 fallback forte
+                usando_fallback = False
+
                 if not hist_c or not hist_f:
-                    gm_c, gs_c = 1.5, 1.5
-                    gm_f, gs_f = 1.5, 1.5
+                    usando_fallback = True
+                    gm_c, gs_c = 1.2, 1.3
+                    gm_f, gs_f = 1.2, 1.3
                 else:
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
@@ -92,12 +90,13 @@ def rodar():
                 potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
                 prob = min(int((potencial / 3.5) * 100), 95)
 
-                print(f"{nome_casa} x {nome_fora} | Pot: {potencial:.2f} | Prob: {prob}")
+                if usando_fallback:
+                    prob = max(prob - 10, 50)
 
                 if prob < 50:
                     continue
 
-                if potencial >= 2.8:
+                if potencial >= 3.0 and not usando_fallback:
                     mercado = "🔥 Over 2.5"
                 elif potencial >= 1.8:
                     mercado = "🟢 Over 1.5"
