@@ -21,7 +21,7 @@ def enviar(msg):
     except:
         print("Erro ao enviar mensagem")
 
-# ================= HISTÓRICO MELHORADO =================
+# ================= HISTÓRICO =================
 def historico(team_id):
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
@@ -35,7 +35,6 @@ def historico(team_id):
             try:
                 comps = j["competitions"][0]["competitors"]
 
-                # 🔥 valida score corretamente
                 if "score" not in comps[0] or "score" not in comps[1]:
                     continue
 
@@ -63,14 +62,12 @@ def historico(team_id):
     except:
         return None
 
-# ================= LOOP PRINCIPAL =================
+# ================= LOOP =================
 def rodar():
     while True:
         try:
             data = requests.get(URL).json()
             eventos = data.get("events", [])
-
-            print(f"\nTOTAL JOGOS API: {len(eventos)}")
 
             candidatos = []
 
@@ -91,13 +88,11 @@ def rodar():
                 if id_jogo in jogos_enviados:
                     continue
 
-                # ================= HISTÓRICO =================
                 hist_c = historico(casa["team"]["id"])
                 hist_f = historico(fora["team"]["id"])
 
                 usando_fallback = False
 
-                # 🔥 fallback com VARIAÇÃO REAL
                 if not hist_c or not hist_f:
                     usando_fallback = True
                     gm_c = random.uniform(1.1, 1.6)
@@ -108,19 +103,32 @@ def rodar():
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
 
-                # ================= CÁLCULO =================
+                # 🔥 FILTROS DE QUALIDADE
+                if gm_c < 1.2 and gm_f < 1.2:
+                    continue
+
+                if gs_c < 0.8 and gs_f < 0.8:
+                    continue
+
+                # 🔥 CÁLCULO
                 potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
                 prob = min(int((potencial / 3.5) * 100), 95)
 
                 if usando_fallback:
                     prob = max(prob - 10, 50)
 
-                print(f"{nome_casa} x {nome_fora} | Pot: {potencial:.2f} | Prob: {prob} | Fallback: {usando_fallback}")
-
-                if prob < 50:
+                if prob < 65:
                     continue
 
-                # ================= MERCADO =================
+                # 🔥 NÍVEL
+                if prob >= 80:
+                    nivel = "💎 ELITE"
+                elif prob >= 70:
+                    nivel = "🔥 FORTE"
+                else:
+                    nivel = "⚠️ MODERADO"
+
+                # 🔥 MERCADO
                 if potencial >= 3.0 and not usando_fallback:
                     mercado = "🔥 Over 2.5"
                 elif potencial >= 1.8:
@@ -128,7 +136,7 @@ def rodar():
                 else:
                     continue
 
-                # ================= HORÁRIO =================
+                # 🔥 HORÁRIO
                 hora_utc = datetime.fromisoformat(e["date"].replace("Z", ""))
                 hora_br = hora_utc - timedelta(hours=3)
                 hora_formatada = hora_br.strftime("%H:%M")
@@ -139,15 +147,29 @@ def rodar():
                     "pot": potencial,
                     "mercado": mercado,
                     "hora": hora_formatada,
-                    "id": id_jogo
+                    "nivel": nivel,
+                    "id": id_jogo,
+                    "gm_c": gm_c,
+                    "gm_f": gm_f,
+                    "gs_c": gs_c,
+                    "gs_f": gs_f
                 })
 
-            # ================= TOP =================
-            top = sorted(candidatos, key=lambda x: x["prob"], reverse=True)[:5]
+            # ================= ORGANIZAÇÃO =================
+            elites = [c for c in candidatos if c["prob"] >= 80]
+            fortes = [c for c in candidatos if 70 <= c["prob"] < 80]
+            moderados = [c for c in candidatos if c["prob"] < 70]
 
+            top = sorted(elites, key=lambda x: x["prob"], reverse=True)[:3]
+            top += sorted(fortes, key=lambda x: x["prob"], reverse=True)[:2]
+
+            if len(top) < 3:
+                top += sorted(moderados, key=lambda x: x["prob"], reverse=True)[:2]
+
+            # ================= ENVIO =================
             for j in top:
                 msg = f"""
-🚨 ENTRADA
+🚨 ENTRADA {j['nivel']}
 
 {j['mercado']}
 📊 Prob: {j['prob']}%
@@ -155,17 +177,20 @@ def rodar():
 ⚽ {j['jogo']}
 ⏰ {j['hora']}
 
+📈 Ataque: {j['gm_c']:.1f} x {j['gm_f']:.1f}
+🧱 Defesa: {j['gs_c']:.1f} x {j['gs_f']:.1f}
+
 🧠 Potencial: {j['pot']:.2f}
+💰 Stake sugerida: 1-2%
 """
                 enviar(msg)
                 jogos_enviados.add(j["id"])
 
-            print(f"SINAIS ENVIADOS: {len(top)}")
+            print(f"SINAIS PREMIUM: {len(top)}")
 
         except Exception as e:
             print("Erro geral:", e)
 
         time.sleep(600)
 
-# ================= START =================
 rodar()
