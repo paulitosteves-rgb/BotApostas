@@ -16,34 +16,9 @@ def enviar(msg):
         "text": msg
     })
 
-# 🔥 FILTRO DE LIGA
+# 🔥 TEMPORÁRIO (liberado total)
 def liga_valida(nome_liga):
-    nome = nome_liga.lower()
-
-    bloqueadas = ["friendly", "amistoso", "u20", "u17", "women", "feminino", "reserve", "youth"]
-    for b in bloqueadas:
-        if b in nome:
-            return False
-
-    ligas_boas = [
-        "champions",
-        "europa league",
-        "conference",
-        "premier league",
-        "la liga",
-        "serie a",
-        "bundesliga",
-        "ligue 1",
-        "brasil",
-        "libertadores",
-        "sudamericana"
-    ]
-
-    for l in ligas_boas:
-        if l in nome:
-            return True
-
-    return False
+    return True
 
 def historico(team_id):
     try:
@@ -72,7 +47,7 @@ def historico(team_id):
         if total == 0:
             return None
 
-        return gm/total, gs/total
+        return gm / total, gs / total
 
     except:
         return None
@@ -81,18 +56,15 @@ def rodar():
     while True:
         try:
             data = requests.get(URL).json()
+
+            print(f"TOTAL JOGOS API: {len(data.get('events', []))}")
+
             candidatos = []
 
             for e in data.get("events", []):
                 status = e["status"]["type"]["description"]
 
                 if "Scheduled" not in status and "Not Started" not in status:
-                    continue
-
-                liga = e.get("league", {}).get("name", "")
-
-                # 🔥 FILTRO AQUI
-                if not liga_valida(liga):
                     continue
 
                 casa = e["competitions"][0]["competitors"][0]
@@ -109,9 +81,10 @@ def rodar():
                 hist_c = historico(casa["team"]["id"])
                 hist_f = historico(fora["team"]["id"])
 
+                # 🔥 fallback forte
                 if not hist_c or not hist_f:
-                    gm_c, gs_c = 1.3, 1.3
-                    gm_f, gs_f = 1.3, 1.3
+                    gm_c, gs_c = 1.5, 1.5
+                    gm_f, gs_f = 1.5, 1.5
                 else:
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
@@ -119,12 +92,14 @@ def rodar():
                 potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
                 prob = min(int((potencial / 3.5) * 100), 95)
 
-                if prob < 55:
+                print(f"{nome_casa} x {nome_fora} | Pot: {potencial:.2f} | Prob: {prob}")
+
+                if prob < 50:
                     continue
 
-                if potencial >= 3.0:
+                if potencial >= 2.8:
                     mercado = "🔥 Over 2.5"
-                elif potencial >= 2.0:
+                elif potencial >= 1.8:
                     mercado = "🟢 Over 1.5"
                 else:
                     continue
@@ -135,7 +110,6 @@ def rodar():
 
                 candidatos.append({
                     "jogo": f"{nome_casa} x {nome_fora}",
-                    "liga": liga,
                     "prob": prob,
                     "pot": potencial,
                     "mercado": mercado,
@@ -147,13 +121,12 @@ def rodar():
 
             for j in top:
                 msg = f"""
-🚨 TOP ENTRADA
+🚨 ENTRADA
 
 {j['mercado']}
 📊 Prob: {j['prob']}%
 
 ⚽ {j['jogo']}
-🏆 {j['liga']}
 ⏰ {j['hora']}
 
 🧠 Potencial: {j['pot']:.2f}
@@ -161,7 +134,7 @@ def rodar():
                 enviar(msg)
                 jogos_enviados.add(j["id"])
 
-            print(f"Loop OK - {len(top)} sinais enviados")
+            print(f"SINAIS ENVIADOS: {len(top)}")
 
         except Exception as e:
             print("Erro:", e)
