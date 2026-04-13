@@ -38,10 +38,7 @@ def historico(team_id):
                 if "score" not in comps[0] or "score" not in comps[1]:
                     continue
 
-                score1 = comps[0]["score"]
-                score2 = comps[1]["score"]
-
-                if score1 is None or score2 is None:
+                if comps[0]["score"] is None or comps[1]["score"] is None:
                     continue
 
                 for t in comps:
@@ -61,6 +58,52 @@ def historico(team_id):
 
     except:
         return None
+
+# ================= MÚLTIPLAS =================
+def gerar_multiplas(candidatos):
+    fortes = [c for c in candidatos if c["prob"] >= 70]
+
+    if len(fortes) < 2:
+        return []
+
+    fortes = sorted(fortes, key=lambda x: x["prob"], reverse=True)
+
+    multiplas = []
+
+    # SEGURA (2 jogos)
+    jogos_segura = fortes[:2]
+    odd_total = 1
+    desc = ""
+
+    for j in jogos_segura:
+        odd = 1.30 if "1.5" in j["mercado"] else 1.80
+        odd_total *= odd
+        desc += f"\n• {j['jogo']} ({j['mercado']})"
+
+    multiplas.append({
+        "tipo": "🛡️ MÚLTIPLA SEGURA",
+        "jogos": desc,
+        "odd": odd_total
+    })
+
+    # AGRESSIVA (3 jogos)
+    if len(fortes) >= 3:
+        jogos_agressiva = fortes[:3]
+        odd_total = 1
+        desc = ""
+
+        for j in jogos_agressiva:
+            odd = 1.30 if "1.5" in j["mercado"] else 1.80
+            odd_total *= odd
+            desc += f"\n• {j['jogo']} ({j['mercado']})"
+
+        multiplas.append({
+            "tipo": "🔥 MÚLTIPLA AGRESSIVA",
+            "jogos": desc,
+            "odd": odd_total
+        })
+
+    return multiplas
 
 # ================= LOOP =================
 def rodar():
@@ -166,7 +209,7 @@ def rodar():
             if len(top) < 3:
                 top += sorted(moderados, key=lambda x: x["prob"], reverse=True)[:2]
 
-            # ================= ENVIO =================
+            # ================= ENVIO SINAIS =================
             for j in top:
                 msg = f"""
 🚨 ENTRADA {j['nivel']}
@@ -186,11 +229,26 @@ def rodar():
                 enviar(msg)
                 jogos_enviados.add(j["id"])
 
-            print(f"SINAIS PREMIUM: {len(top)}")
+            # ================= ENVIO MÚLTIPLAS =================
+            multiplas = gerar_multiplas(candidatos)
+
+            for m in multiplas:
+                msg = f"""
+{m['tipo']}
+
+{m['jogos']}
+
+💰 Odd estimada: {m['odd']:.2f}
+⚠️ Gestão: 0.5% a 1% da banca
+"""
+                enviar(msg)
+
+            print(f"SINAIS PREMIUM: {len(top)} | MULTIPLAS: {len(multiplas)}")
 
         except Exception as e:
             print("Erro geral:", e)
 
         time.sleep(600)
 
+# ================= START =================
 rodar()
