@@ -9,6 +9,27 @@ CHAT_ID = "@Over_golsPV"
 
 URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
 
+# ================= LIGAS BOAS =================
+ligas_boas = [
+    "england", "premier",
+    "spain", "laliga",
+    "italy", "serie a",
+    "germany", "bundesliga",
+    "france", "ligue",
+    "brazil", "brasileirão",
+    "argentina",
+    "champions",
+    "europa",
+    "conference",
+    "libertadores",
+    "sudamericana"
+]
+
+def liga_valida(nome):
+    nome = nome.lower()
+    return any(l in nome for l in ligas_boas)
+
+# ================= TELEGRAM =================
 def enviar(msg):
     try:
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={
@@ -16,12 +37,14 @@ def enviar(msg):
             "text": msg
         })
     except:
-        print("Erro ao enviar")
+        print("Erro ao enviar mensagem")
 
+# ================= LINK BET365 =================
 def gerar_link(jogo):
     busca = jogo.replace(" ", "+").replace("x", "vs")
     return f"https://www.bet365.com/#/AX/K^{busca}"
 
+# ================= HISTÓRICO =================
 def historico(team_id):
     try:
         data = requests.get(
@@ -60,6 +83,7 @@ def historico(team_id):
     except:
         return None
 
+# ================= LOOP =================
 def rodar():
     while True:
         try:
@@ -67,9 +91,15 @@ def rodar():
             candidatos = []
 
             for e in data.get("events", []):
+
                 status = e["status"]["type"]["description"]
 
                 if "Scheduled" not in status and "Not Started" not in status:
+                    continue
+
+                # 🔥 FILTRO DE LIGA
+                liga = e.get("league", {}).get("name", "")
+                if not liga_valida(liga):
                     continue
 
                 casa = e["competitions"][0]["competitors"][0]
@@ -85,38 +115,33 @@ def rodar():
 
                 if not hist_c or not hist_f:
                     usando_fallback = True
-                    gm_c = random.uniform(1.1, 1.6)
-                    gs_c = random.uniform(1.1, 1.6)
-                    gm_f = random.uniform(1.1, 1.6)
-                    gs_f = random.uniform(1.1, 1.6)
+                    gm_c = random.uniform(1.2, 1.7)
+                    gs_c = random.uniform(1.0, 1.6)
+                    gm_f = random.uniform(1.2, 1.7)
+                    gs_f = random.uniform(1.0, 1.6)
                 else:
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
 
-                if gm_c < 1.2 and gm_f < 1.2:
+                # 🔥 FILTROS DE QUALIDADE
+                if gm_c < 1.3 or gm_f < 1.3:
                     continue
 
-                if gs_c < 0.8 and gs_f < 0.8:
+                if gs_c < 0.9 and gs_f < 0.9:
                     continue
 
                 potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
                 prob = min(int((potencial / 3.5) * 100), 95)
 
                 if usando_fallback:
-                    prob = max(prob - 10, 50)
+                    prob = max(prob - 10, 60)
 
                 if prob < 70:
                     continue
 
-                if prob >= 80:
-                    nivel = "ELITE"
-                else:
-                    nivel = "FORTE"
+                nivel = "ELITE" if prob >= 80 else "FORTE"
 
-                if potencial >= 3.0 and not usando_fallback:
-                    mercado = "Over 2.5"
-                else:
-                    mercado = "Over 1.5"
+                mercado = "Over 2.5" if potencial >= 3.0 else "Over 1.5"
 
                 hora_utc = datetime.fromisoformat(e["date"].replace("Z", ""))
                 hora_br = hora_utc - timedelta(hours=3)
@@ -136,56 +161,68 @@ def rodar():
             fortes = [c for c in candidatos if c["nivel"] == "FORTE"]
 
             # ================= DUPLA =================
-            if len(elites) >= 2:
-                dupla = elites[:2]
-            else:
-                dupla = (elites + fortes)[:2]
+            dupla = (elites + fortes)[:2]
 
             if len(dupla) == 2:
                 odd = 1
                 texto = ""
+                links = ""
 
                 for j in dupla:
                     odd *= 1.30 if "1.5" in j["mercado"] else 1.80
-                    texto += f"\n• {j['jogo']} ({j['mercado']})"
+                    texto += f"\n• {j['jogo']} → {j['mercado']}"
+                    links += f"\n{j['link']}"
 
                 enviar(f"""
 🛡️ DUPLA DO DIA
 
 {texto}
 
-💰 Odd: {odd:.2f}
+💰 Odd estimada: {odd:.2f}
 
-🔗 Links:
-{dupla[0]['link']}
-{dupla[1]['link']}
+🎯 COMO APOSTAR:
+1. Acesse os jogos abaixo
+2. Selecione o mercado indicado
+3. Monte o bilhete
+
+🔗 Jogos:
+{links}
 
 💰 Stake: 1-2%
 """)
 
             # ================= TRIPLA =================
-            if len(candidatos) >= 3:
-                tripla = (elites[:1] + fortes[:2])[:3]
+            tripla = (elites[:1] + fortes[:2])[:3]
 
-                if len(tripla) == 3:
-                    odd = 1
-                    texto = ""
+            if len(tripla) == 3:
+                odd = 1
+                texto = ""
+                links = ""
 
-                    for j in tripla:
-                        odd *= 1.30 if "1.5" in j["mercado"] else 1.80
-                        texto += f"\n• {j['jogo']} ({j['mercado']})"
+                for j in tripla:
+                    odd *= 1.30 if "1.5" in j["mercado"] else 1.80
+                    texto += f"\n• {j['jogo']} → {j['mercado']}"
+                    links += f"\n{j['link']}"
 
-                    enviar(f"""
+                enviar(f"""
 🔥 TRIPLA DO DIA
 
 {texto}
 
-💰 Odd: {odd:.2f}
+💰 Odd estimada: {odd:.2f}
+
+🎯 COMO APOSTAR:
+1. Acesse os jogos abaixo
+2. Selecione o mercado indicado
+3. Monte o bilhete
+
+🔗 Jogos:
+{links}
 
 💰 Stake: 0.5-1%
 """)
 
-            print("Duplas e triplas enviadas")
+            print(f"Jogos filtrados: {len(candidatos)}")
 
         except Exception as e:
             print("Erro:", e)
