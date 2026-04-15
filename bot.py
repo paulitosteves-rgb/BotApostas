@@ -9,9 +9,6 @@ CHAT_ID = "@Over_golsPV"
 
 URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
 
-jogos_enviados = set()
-
-# ================= TELEGRAM =================
 def enviar(msg):
     try:
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={
@@ -19,13 +16,17 @@ def enviar(msg):
             "text": msg
         })
     except:
-        print("Erro ao enviar mensagem")
+        print("Erro ao enviar")
 
-# ================= HISTÓRICO =================
+def gerar_link(jogo):
+    busca = jogo.replace(" ", "+").replace("x", "vs")
+    return f"https://www.bet365.com/#/AX/K^{busca}"
+
 def historico(team_id):
     try:
-        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
-        data = requests.get(url).json()
+        data = requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/soccer/teams/{team_id}/schedule"
+        ).json()
 
         jogos = data.get("events", [])[:10]
 
@@ -59,62 +60,13 @@ def historico(team_id):
     except:
         return None
 
-# ================= MÚLTIPLAS =================
-def gerar_multiplas(candidatos):
-    fortes = [c for c in candidatos if c["prob"] >= 70]
-
-    if len(fortes) < 2:
-        return []
-
-    fortes = sorted(fortes, key=lambda x: x["prob"], reverse=True)
-
-    multiplas = []
-
-    # SEGURA (2 jogos)
-    jogos_segura = fortes[:2]
-    odd_total = 1
-    desc = ""
-
-    for j in jogos_segura:
-        odd = 1.30 if "1.5" in j["mercado"] else 1.80
-        odd_total *= odd
-        desc += f"\n• {j['jogo']} ({j['mercado']})"
-
-    multiplas.append({
-        "tipo": "🛡️ MÚLTIPLA SEGURA",
-        "jogos": desc,
-        "odd": odd_total
-    })
-
-    # AGRESSIVA (3 jogos)
-    if len(fortes) >= 3:
-        jogos_agressiva = fortes[:3]
-        odd_total = 1
-        desc = ""
-
-        for j in jogos_agressiva:
-            odd = 1.30 if "1.5" in j["mercado"] else 1.80
-            odd_total *= odd
-            desc += f"\n• {j['jogo']} ({j['mercado']})"
-
-        multiplas.append({
-            "tipo": "🔥 MÚLTIPLA AGRESSIVA",
-            "jogos": desc,
-            "odd": odd_total
-        })
-
-    return multiplas
-
-# ================= LOOP =================
 def rodar():
     while True:
         try:
             data = requests.get(URL).json()
-            eventos = data.get("events", [])
-
             candidatos = []
 
-            for e in eventos:
+            for e in data.get("events", []):
                 status = e["status"]["type"]["description"]
 
                 if "Scheduled" not in status and "Not Started" not in status:
@@ -125,11 +77,6 @@ def rodar():
 
                 nome_casa = casa["team"]["name"]
                 nome_fora = fora["team"]["name"]
-
-                id_jogo = e["id"]
-
-                if id_jogo in jogos_enviados:
-                    continue
 
                 hist_c = historico(casa["team"]["id"])
                 hist_f = historico(fora["team"]["id"])
@@ -146,109 +93,103 @@ def rodar():
                     gm_c, gs_c = hist_c
                     gm_f, gs_f = hist_f
 
-                # 🔥 FILTROS DE QUALIDADE
                 if gm_c < 1.2 and gm_f < 1.2:
                     continue
 
                 if gs_c < 0.8 and gs_f < 0.8:
                     continue
 
-                # 🔥 CÁLCULO
                 potencial = ((gm_c + gs_f) / 2) + ((gm_f + gs_c) / 2)
                 prob = min(int((potencial / 3.5) * 100), 95)
 
                 if usando_fallback:
                     prob = max(prob - 10, 50)
 
-                if prob < 65:
+                if prob < 70:
                     continue
 
-                # 🔥 NÍVEL
                 if prob >= 80:
-                    nivel = "💎 ELITE"
-                elif prob >= 70:
-                    nivel = "🔥 FORTE"
+                    nivel = "ELITE"
                 else:
-                    nivel = "⚠️ MODERADO"
+                    nivel = "FORTE"
 
-                # 🔥 MERCADO
                 if potencial >= 3.0 and not usando_fallback:
-                    mercado = "🔥 Over 2.5"
-                elif potencial >= 1.8:
-                    mercado = "🟢 Over 1.5"
+                    mercado = "Over 2.5"
                 else:
-                    continue
+                    mercado = "Over 1.5"
 
-                # 🔥 HORÁRIO
                 hora_utc = datetime.fromisoformat(e["date"].replace("Z", ""))
                 hora_br = hora_utc - timedelta(hours=3)
-                hora_formatada = hora_br.strftime("%H:%M")
 
                 candidatos.append({
                     "jogo": f"{nome_casa} x {nome_fora}",
                     "prob": prob,
-                    "pot": potencial,
-                    "mercado": mercado,
-                    "hora": hora_formatada,
                     "nivel": nivel,
-                    "id": id_jogo,
-                    "gm_c": gm_c,
-                    "gm_f": gm_f,
-                    "gs_c": gs_c,
-                    "gs_f": gs_f
+                    "mercado": mercado,
+                    "hora": hora_br.strftime("%H:%M"),
+                    "link": gerar_link(f"{nome_casa} vs {nome_fora}")
                 })
 
-            # ================= ORGANIZAÇÃO =================
-            elites = [c for c in candidatos if c["prob"] >= 80]
-            fortes = [c for c in candidatos if 70 <= c["prob"] < 80]
-            moderados = [c for c in candidatos if c["prob"] < 70]
+            candidatos = sorted(candidatos, key=lambda x: x["prob"], reverse=True)
 
-            top = sorted(elites, key=lambda x: x["prob"], reverse=True)[:3]
-            top += sorted(fortes, key=lambda x: x["prob"], reverse=True)[:2]
+            elites = [c for c in candidatos if c["nivel"] == "ELITE"]
+            fortes = [c for c in candidatos if c["nivel"] == "FORTE"]
 
-            if len(top) < 3:
-                top += sorted(moderados, key=lambda x: x["prob"], reverse=True)[:2]
+            # ================= DUPLA =================
+            if len(elites) >= 2:
+                dupla = elites[:2]
+            else:
+                dupla = (elites + fortes)[:2]
 
-            # ================= ENVIO SINAIS =================
-            for j in top:
-                msg = f"""
-🚨 ENTRADA {j['nivel']}
+            if len(dupla) == 2:
+                odd = 1
+                texto = ""
 
-{j['mercado']}
-📊 Prob: {j['prob']}%
+                for j in dupla:
+                    odd *= 1.30 if "1.5" in j["mercado"] else 1.80
+                    texto += f"\n• {j['jogo']} ({j['mercado']})"
 
-⚽ {j['jogo']}
-⏰ {j['hora']}
+                enviar(f"""
+🛡️ DUPLA DO DIA
 
-📈 Ataque: {j['gm_c']:.1f} x {j['gm_f']:.1f}
-🧱 Defesa: {j['gs_c']:.1f} x {j['gs_f']:.1f}
+{texto}
 
-🧠 Potencial: {j['pot']:.2f}
-💰 Stake sugerida: 1-2%
-"""
-                enviar(msg)
-                jogos_enviados.add(j["id"])
+💰 Odd: {odd:.2f}
 
-            # ================= ENVIO MÚLTIPLAS =================
-            multiplas = gerar_multiplas(candidatos)
+🔗 Links:
+{dupla[0]['link']}
+{dupla[1]['link']}
 
-            for m in multiplas:
-                msg = f"""
-{m['tipo']}
+💰 Stake: 1-2%
+""")
 
-{m['jogos']}
+            # ================= TRIPLA =================
+            if len(candidatos) >= 3:
+                tripla = (elites[:1] + fortes[:2])[:3]
 
-💰 Odd estimada: {m['odd']:.2f}
-⚠️ Gestão: 0.5% a 1% da banca
-"""
-                enviar(msg)
+                if len(tripla) == 3:
+                    odd = 1
+                    texto = ""
 
-            print(f"SINAIS PREMIUM: {len(top)} | MULTIPLAS: {len(multiplas)}")
+                    for j in tripla:
+                        odd *= 1.30 if "1.5" in j["mercado"] else 1.80
+                        texto += f"\n• {j['jogo']} ({j['mercado']})"
+
+                    enviar(f"""
+🔥 TRIPLA DO DIA
+
+{texto}
+
+💰 Odd: {odd:.2f}
+
+💰 Stake: 0.5-1%
+""")
+
+            print("Duplas e triplas enviadas")
 
         except Exception as e:
-            print("Erro geral:", e)
+            print("Erro:", e)
 
-        time.sleep(600)
+        time.sleep(1800)
 
-# ================= START =================
 rodar()
